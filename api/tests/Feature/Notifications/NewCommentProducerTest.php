@@ -30,6 +30,7 @@ function producerRecipients(): array
 }
 
 beforeEach(function () {
+    $this->travelTo(new DateTimeImmutable('2026-10-21 10:10:00 UTC'));
     $this->maker = User::factory()->create();
     $this->product = Product::factory()->live()->create(['maker_id' => $this->maker->id, 'name' => 'Acme', 'slug' => 'acme']);
     $this->alice = User::factory()->create();

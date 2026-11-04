@@ -6,6 +6,17 @@ use App\Support\Audit;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 
+it('answers the audit log with 422 for the "null" cursor instead of a server error', function () {
+    // Given an admin
+    signedInStaff(Role::Admin);
+
+    // When the audit log is asked for a cursor that decodes to JSON null
+    $response = $this->getJson('/api/v1/admin/audit-logs?cursor=bnVsbA');
+
+    // Then it is a validation error, not a 500
+    $response->assertUnprocessable()->assertJsonValidationErrors('cursor');
+});
+
 it('lists audit entries newest first with the actor, for admins only', function () {
     // Given two staff members who each did something, at different times
     $admin = User::factory()->role(Role::Admin)->create(['handle' => 'boss']);

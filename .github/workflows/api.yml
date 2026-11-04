@@ -27,16 +27,23 @@ jobs:
           POSTGRES_DB: testing
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U sail" --health-interval 5s
+          --health-cmd "pg_isready -U sail -d testing" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
           --health-timeout 5s --health-retries 10
     env:
       DB_HOST: 127.0.0.1
+      REDIS_HOST: 127.0.0.1
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: pdo_pgsql, gd, intl, mbstring
+          extensions: pdo_pgsql, gd, intl, mbstring, redis
           coverage: none
       - id: composer-cache
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"

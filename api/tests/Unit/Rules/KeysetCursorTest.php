@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\Role;
 use App\Rules\KeysetCursor;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -59,15 +58,4 @@ it('lets an absent or empty cursor through as "first page"', function () {
     // When validated on its own
     // Then the rule does not run on an empty string; the controller reads no cursor and serves page one
     expect(keysetCursorPasses(''))->toBeTrue();
-});
-
-it('answers the audit log with 422 for the "null" cursor instead of a server error', function () {
-    // Given an admin
-    signedInStaff(Role::Admin);
-
-    // When the audit log is asked for a cursor that decodes to JSON null
-    $response = $this->getJson('/api/v1/admin/audit-logs?cursor=bnVsbA');
-
-    // Then it is a validation error, not a 500
-    $response->assertUnprocessable()->assertJsonValidationErrors('cursor');
 });

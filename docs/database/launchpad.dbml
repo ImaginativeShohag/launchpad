@@ -1,0 +1,1082 @@
+// Launchpad — full database design (PostgreSQL 17, Laravel 13)
+// Paste into https://dbdiagram.io (or open with any DBML viewer).
+//
+// Header colours = sub-project that owns the table:
+//   blue    #3B82F6  1. Foundation + Accounts
+//   slate   #64748B  1. Framework tables (Laravel / Sanctum)
+//   orange  #F97316  2. Products + Review
+//   green   #22C55E  3. Voting + Ranking
+//   purple  #A855F7  4. Community
+//   pink    #EC4899  5. Notifications + Email
+//   teal    #14B8A6  7. Founder dashboard + Export
+//   red     #EF4444  8. Anti-cheat
+// (6. Search adds no tables: two stored generated columns on products (search_vector, name_search), two partial GIN indexes,
+//  the extensions unaccent and pg_trgm and two SQL functions, launchpad_fold and launchpad_prefix_tsquery. See the products note.)
+//
+// Conventions
+// - Decision log: docs/database/DECISIONS.md
+// - Primary keys: ULID char(26) everywhere (HasUlids, foreignUlid, ulidMorphs). Safe to expose.
+//   Exceptions: Laravel internals (jobs, failed_jobs, personal_access_tokens.id) keep bigint.
+//   Human URLs still use users.handle (/u/{handle}) and products.slug (/p/{slug}).
+// - All timestamps are timestamptz (UTC). "Launch day" = a UTC calendar day, 00:00–24:00 UTC (no DST, one shared "today").
+// - Enums are stored as varchar + CHECK constraint, mapped to PHP backed enums (not native PG enums).
+// - Roles: single users.role column; permissions live in Laravel Policies (no role/permission tables).
+// - Images: path column on the owner, files on a Laravel disk (local → S3/R2), processed by one StoreImage action
+//   (resize, strip EXIF/GPS, WebP). No shared media table.
+// - IPs and device ids are stored only as HMAC-SHA256 hashes (secret key), never raw.
+//   device id = HttpOnly `lp_did` cookie (random ULID, 2 years) on web; X-Device-Id install id on mobile.
+//   No browser fingerprinting.
+// - Live updates: Laravel Reverb (WebSockets) via broadcasting. Private channel user.{id} for the bell,
+//   public channel product.{id} for vote counts, public channel today for re-rank events. No schema impact.
+// - Community (sub-project 4, phases A, B and C built): comments with one level of replies, member and topic follows, the
+//   following feed (read time, never cached), member-side reports, the staff report queue and per-target resolution,
+//   admin suspension and the deleted-member comments job (phase C).
+// - Founder dashboard (sub-project 7, phases A, B and C built): page view counting (Redis, flushed every minute into
+//   product_hourly_stats.views and product_referrers_daily) and the maker/staff dashboard reads. Exports (table `exports`) are
+//   phase C (exports, 13 scheduled commands in total).
+// - Notifications and email (sub-project 5, phases A, B and C built): the bell (notifications), email_preferences, the
+//   email_messages outbox, digest_runs, launch reminders, daily and weekly digests, their retention purges and the
+//   DeleteAccount hooks (11 scheduled commands in total).
+// - Retention (daily `launchpad:purge-retention`, 03:15 UTC, built 2026-10-21; values in settings): auth_events 180
+//   days; votes.ip_hash / device_hash / user_agent nulled once the product's launch_date is more than 90 days before
+//   today (vote row stays); rank_snapshots 180 days; audit_logs rows kept forever but their ip_hash / user_agent nulled after 365 days
+//   (retention.audit_network_days; a narrow, flag-guarded exception in the append-only trigger). risk_signals: 365 days
+//   unreviewed, 90 days after the review (reviewed once-per-account kinds are kept for ever); see the risk_signals table.
+
+Project launchpad {
+  database_type: 'PostgreSQL'
+  Note: 'Launchpad — daily product launches with voting. JSON API for web + future mobile app.'
+}
+
+//////////////////////////////////////////////////////////////
+// Enums
+//////////////////////////////////////////////////////////////
+
+Enum user_role {
+  member
+  reviewer
+  admin
+}
+
+Enum product_status {
+  draft
+  pending           [note: 'submitted, waiting for review']
+  changes_requested
+  rejected
+  approved          [note: 'approved, no launch day picked yet']
+  scheduled         [note: 'launch day picked, still hidden']
+  live              [note: 'launch day reached, public']
+  taken_down
+}
+
+Enum link_kind {
+  website   [note: 'profiles only — products use products.website_url']
+  app_store
+  play_store
+  github
+  x
+  linkedin
+  docs
+  youtube
+  other
+}
+
+Enum review_decision {
+  approved
+  rejected
+  changes_requested
+}
+
+Enum vote_status {
+  counted
+  flagged  [note: 'set by launchpad:detect-abuse for members at or above anticheat.flag_risk_score; STILL COUNTS everywhere (votes_count, hourly buckets, hot score, rankings) and is un-flagged when the score drops; staff void a vote explicitly']
+  voided   [note: 'removed by anti-cheat or staff; not counted']
+}
+
+Enum report_reason {
+  spam
+  abuse
+  misleading
+  inappropriate
+  other
+}
+
+Enum report_status {
+  open
+  resolved
+  dismissed
+}
+
+Enum email_type {
+  verify_email
+  reset_password
+  email_change      [note: 'confirm link to new address + heads-up to old address; cannot be turned off']
+  review_outcome
+  launch_reminder
+  product_live
+  new_comment
+  daily_top5
+  weekly_best
+  export_ready      [note: 'optional (the seventh preference type); sent when a dashboard export is ready, links to the dashboard']
+}
+
+Enum email_status {
+  queued
+  sending     [note: 'claimed by a worker; next_attempt_at is the lease end']
+  sent
+  failed      [note: 'FINAL only: a permanent error, or all attempts used (the outbox gives up after 9)']
+  suppressed  [note: 'not allowed at send time (opted out, unverified, suspended, deleted, target gone) — never delivered']
+}
+
+Enum export_status {
+  queued
+  processing
+  ready
+  failed
+  expired
+}
+
+Enum auth_event_type {
+  signup
+  login_succeeded
+  login_failed
+  logout
+  google_linked
+  email_verified
+  password_reset_requested
+  password_reset
+  password_changed
+  token_created
+  token_revoked
+  account_deleted
+  email_change_requested
+  email_changed
+}
+
+Enum risk_signal_kind {
+  shared_device       [note: 'R1: several accounts voted the same product from one device hash']
+  ip_cluster          [note: 'R2: many accounts voted the same product from one IP hash (discounted when all are established accounts)']
+  vote_burst          [note: 'R3: votes arriving faster than humanly plausible; product form (user_id NULL, weight 0) and member form']
+  fresh_account       [note: 'R4: voted minutes after the account was created; once per account']
+  disposable_email    [note: 'R5: the e-mail domain is on the disposable list; once per account']
+  single_maker_voter  [note: 'R6: most of the member votes went to one maker']
+  login_churn         [note: 'R7: several voting accounts signed up or logged in from one device']
+  coordinated_votes   [note: 'R8: a group of accounts voting the same products']
+}
+
+//////////////////////////////////////////////////////////////
+// 1. Foundation + Accounts
+//////////////////////////////////////////////////////////////
+
+Table users [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  handle varchar(30) [not null, unique, note: 'lowercase ^[a-z0-9_]{3,30}$, public URL /u/{handle}']
+  name varchar(80) [not null]
+  email varchar(255) [not null, unique, note: 'stored lowercased + trimmed']
+  email_verified_at timestamptz [note: 'null = unverified; Google sign-ups set immediately']
+  pending_email varchar(255) [note: 'requested new email; becomes email only after the link sent to it is confirmed']
+  pending_email_expires_at timestamptz [note: 'link valid 60 min; old address gets a cancel link']
+  password varchar(255) [note: 'argon2id hash; null = Google-only account']
+  role user_role [not null, default: 'member', note: 'founder is derived (has products), not stored']
+  headline varchar(120) [note: 'one line about them']
+  avatar_path varchar(255) [note: 'path on configured disk (public / s3)']
+  risk_score smallint [not null, default: 0, note: "0-100 (CHECK users_risk_score_range), maintained by launchpad:detect-abuse: per kind the strongest signal contribution (dismissed 0, confirmed full weight, open faded linearly over anticheat.decay_days), summed, capped at 100. At anticheat.flag_risk_score (70) the member's votes on yesterday's and today's launch days are flagged (they still count)"]
+  suspended_at timestamptz [note: 'set by SuspendUser (admin only; never on oneself or an admin: 403 cannot_suspend); signs the member out everywhere, blocks sign-in and all actions; their products, comments, votes and follows stay as they are. RestoreUser clears it and suspended_reason; the old reason is kept in the audit row (user.restored, meta previous_reason)']
+  suspended_reason varchar(500)
+  last_login_at timestamptz
+  remember_token varchar(100)
+  deleted_at timestamptz [note: 'account deleted + anonymised; row kept so FKs and history stay valid']
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    role
+    suspended_at
+    (created_at desc, id desc) [name: 'users_created_at_id_index', note: 'PARTIAL: WHERE deleted_at IS NULL. The admin member directory (GET /admin/users), newest first, keyset; id DESC so the cursor has one direction. Created by raw SQL (plain CREATE INDEX: maintenance window, or CREATE INDEX CONCURRENTLY by hand first)']
+    risk_score [name: 'users_risk_score_index', note: 'PARTIAL: (risk_score DESC, id DESC) WHERE risk_score > 0. The staff members-by-risk list, worst first; id DESC so the keyset has one direction. Created by raw SQL']
+  }
+
+  Note: '''
+  Account deletion = anonymise, never hard delete (DeleteAccount action, one transaction):
+    name -> 'Deleted member', handle -> 'deleted-{ulid}', email -> 'deleted+{ulid}@invalid'
+    password, avatar_path, headline, remember_token -> cleared
+    user_links, social_accounts, sessions, personal_access_tokens, follows, email_preferences -> deleted
+    votes on not-yet-frozen days -> status voided (rank recomputes); frozen daily_rankings untouched
+    comments -> shown as "[deleted]" (masked at read time at once; bodies wiped and counters corrected by the DeleteMemberComments job); products -> taken down
+    audit_logs / auth_events / risk_signals keep the id (audit_logs also keeps ip_hash and user_agent until retention.audit_network_days passes, see the audit_logs note)
+  '''
+}
+
+Table user_links [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
+  kind link_kind [not null]
+  label varchar(40) [note: "optional display text, e.g. 'Blog'"]
+  url varchar(2048) [not null, note: 'https only']
+  position smallint [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (user_id, position) [unique]
+  }
+
+  Note: 'Public profile links, max 5. Same link_kind enum and validation as product_links.'
+}
+
+Table social_accounts [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
+  provider varchar(20) [not null, note: "'google'"]
+  provider_user_id varchar(255) [not null, note: 'Google sub — never match on email alone']
+  provider_email varchar(255) [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (provider, provider_user_id) [unique]
+    (user_id, provider) [unique, note: 'one identity per provider per account']
+    user_id
+  }
+}
+
+Table audit_logs [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  actor_id char(26) [ref: > users.id, note: 'null = system. Users are never hard-deleted, so the FK has no ON DELETE action (a SET NULL cascade would be an UPDATE that the immutability trigger blocks)']
+  action varchar(64) [not null, note: "e.g. 'product.taken_down', 'user.suspended', 'review.approved'"]
+  subject_type varchar(64) [note: 'polymorphic: users / products / comments / reports …']
+  subject_id char(26)
+  meta jsonb [not null, default: '{}', note: 'before/after values, reason']
+  ip_hash varchar(64)
+  user_agent varchar(255)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (subject_type, subject_id)
+    (actor_id, created_at)
+    (action, created_at)
+    created_at [name: 'audit_logs_unpurged_network_index', note: 'PARTIAL: WHERE ip_hash IS NOT NULL OR user_agent IS NOT NULL; lets the retention purge find old rows without scanning emptied ones']
+  }
+
+  Note: 'Append-only. A Postgres trigger raises on UPDATE/DELETE/TRUNCATE. No updated_at. Rows are never deleted. ip_hash (keyed HMAC) and user_agent (truncated) are written on every row by Audit and set to NULL by launchpad:purge-retention once created_at is older than settings retention.audit_network_days (365, 30 to 3650). The only UPDATE the trigger lets through: both columns set to NULL, nothing else changed, and the transaction set the transaction-local flag launchpad.audit_purge = on (only the purge does). Not a privilege boundary. Built 2026-10-21, see DECISIONS.md row 23.'
+}
+
+Table settings [headercolor: #3B82F6] {
+  key varchar(64) [pk, note: "e.g. 'launch.max_per_maker_per_day'"]
+  value jsonb [not null, note: 'typed by the PHP Setting enum that owns the key']
+  updated_by char(26) [ref: > users.id, note: 'null = seeded default']
+  updated_at timestamptz
+
+  Note: '''
+  Admin-editable business rules. Every key is declared in the PHP SettingKey enum and seeded by SettingSeeder
+  (type, default, min/max) — admins edit values, never create keys. Cached; cache cleared on update.
+  Each change also writes audit_logs (action = 'setting.updated', meta = {before, after}).
+  Seeded keys:
+    launch.max_per_maker_per_day = 2
+    launch.max_days_ahead = 60
+    product.max_topics = 3
+    product.max_screenshots = 6
+    product.max_pending_per_maker = 5
+    anticheat.flag_risk_score = 70      (integer 1 to 100: members at or above it have their recent votes flagged; flagged votes still count)
+    anticheat.weight.shared_device = 40, .ip_cluster = 15, .vote_burst = 25, .fresh_account = 15, .disposable_email = 25,
+      .single_maker_voter = 20, .login_churn = 20, .coordinated_votes = 35   (integers 0 to 100; 0 switches the rule off)
+    anticheat.group_window_hours = 24 (1-48), anticheat.shared_device.min_accounts = 3 (2-20), anticheat.ip_cluster.min_accounts = 5 (2-50),
+      anticheat.ip_cluster.established_days = 30 (1-365), anticheat.burst.window_minutes = 10 (1-60), anticheat.burst.min_votes = 30 (5-1000),
+      anticheat.user_burst.votes = 8 (3-50), anticheat.user_burst.minutes = 5 (1-60), anticheat.fresh_account.minutes = 30 (1-1440),
+      anticheat.single_maker.min_votes = 5 (3-50), anticheat.single_maker.days = 30 (7-90), anticheat.login_churn.min_accounts = 4 (2-50),
+      anticheat.coordinated.min_accounts = 3 (2-20), anticheat.coordinated.min_products = 4 (2-50), anticheat.decay_days = 14 (1-90),
+      anticheat.coordinated.max_popularity_pct = 40 (5-100)   (integers)
+    anticheat.ip_cluster.discount = "0.5" (0-1), anticheat.burst.ratio = "4" (1-20), anticheat.single_maker.share = "0.8" and
+      anticheat.coordinated.overlap = "0.8" (0.5-1), anticheat.product_watch_ratio = "0.9" and anticheat.product_alert_ratio = "0.7" (0.1-1,
+      watch must stay above alert)   (decimal STRINGS)
+    anticheat.disposable_domains = "mailinator.com,..."   (comma separated lowercase domains, 20 by default, at most 300 entries / 4000 characters; a write needs at least one entry)
+    retention.auth_events_days = 180
+    retention.vote_hashes_days = 90
+    retention.risk_signals_days = 365   (integer 30 to 3650, enforced by launchpad:purge-retention via PurgeRiskSignals: unreviewed signals, and the cap on reviewed ones)
+    retention.risk_signals_reviewed_days = 90 (integer 7 to 3650, enforced by PurgeRiskSignals: reviewed signals, counted from the review)
+    retention.rank_snapshots_days = 180  (integer 7 to 365, enforced by launchpad:purge-retention)
+    retention.audit_network_days = 365  (integer 30 to 3650, enforced by launchpad:purge-retention: empties audit_logs.ip_hash and user_agent)
+    digest.daily_send_at_utc = "07:00"   (HH:MM, 00:00 to 21:59 UTC; read through Settings::timeOfDay(), which falls back to the default for a stored value that is not HH:MM before 22:00; also the start of the launch-reminder window)
+    digest.weekly_send_at_utc = "07:00" (Mondays, same rule)
+    ranking.decay_exponent = "0.9"   (decimal STRING, 0.1 to 3, at most 3 decimals; read through Settings::decimal(), which falls back to the default for an out-of-range stored value)
+    ranking.early_bonus = "0.35"     (decimal STRING, 0 to 5, same shape)
+    community.comment_edit_minutes = 15  (integer 0 to 1440, read through Settings::integer(); 0 = comments can never be edited; enforced by EditComment)
+    community.report_open_cap = 20       (integer 1 to 200: open reports one member may have at a time; enforced by CreateReport, a soft brake)
+  The outbox numbers (batch 50, 50 s budget, 10 min lease, 9 attempts, breaker 5, backoff list) are constants in config/launchpad.php under 'outbox'.
+    retention.notifications_days = 90   (integer 7 to 365, enforced by launchpad:purge-retention: bell rows, read or not)
+    retention.email_messages_days = 90  (integer 30 to 365, enforced by launchpad:purge-retention: finished email_messages; digest_runs a day earlier; the effective age never drops below 72 h)
+    retention.exports_days = 7          (integer 1 to 30, enforced by launchpad:purge-retention via PurgeExports: how long a finished export stays downloadable)
+  Settings::integer() re-checks type and range on every read and serves the default (with a warning naming the key) for a stored value outside the range.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 1. Framework tables (Laravel / Sanctum defaults)
+//////////////////////////////////////////////////////////////
+
+Table sessions [headercolor: #64748B] {
+  id varchar(255) [pk]
+  user_id char(26) [ref: > users.id]
+  ip_address varchar(45)
+  user_agent text
+  payload text [not null]
+  last_activity integer [not null]
+
+  indexes {
+    user_id
+    last_activity
+  }
+
+  Note: 'Web (SPA) sessions — database driver so users can see / revoke devices.'
+}
+
+Table personal_access_tokens [headercolor: #64748B] {
+  id bigint [pk, increment]
+  tokenable_type varchar(255) [not null, note: 'polymorphic → users']
+  tokenable_id char(26) [not null]
+  name varchar(255) [not null, note: "device name, e.g. 'Amina’s iPhone'"]
+  token varchar(64) [not null, unique, note: 'SHA-256 of the token, plain text never stored']
+  abilities text
+  last_used_at timestamptz
+  expires_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (tokenable_type, tokenable_id)
+    expires_at
+  }
+
+  Note: 'Sanctum mobile-app tokens.'
+}
+
+Table password_reset_tokens [headercolor: #64748B] {
+  email varchar(255) [pk]
+  token varchar(255) [not null, note: 'hashed']
+  created_at timestamptz
+}
+
+Table jobs [headercolor: #64748B] {
+  id bigint [pk, increment]
+  queue varchar(255) [not null]
+  payload text [not null]
+  attempts smallint [not null]
+  reserved_at integer
+  available_at integer [not null]
+  created_at integer [not null]
+
+  indexes {
+    queue
+  }
+
+  Note: 'Database queue: jobs commit in the same transaction as the data that caused them.'
+}
+
+Table failed_jobs [headercolor: #64748B] {
+  id bigint [pk, increment]
+  uuid varchar(255) [not null, unique]
+  connection text [not null]
+  queue text [not null]
+  payload text [not null]
+  exception text [not null]
+  failed_at timestamptz [not null, default: `now()`]
+}
+
+//////////////////////////////////////////////////////////////
+// 2. Products + Review
+//////////////////////////////////////////////////////////////
+
+Table topics [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  slug varchar(40) [not null, unique]
+  name varchar(60) [not null]
+  emoji varchar(8)
+  description varchar(280)
+  position smallint [not null, default: 0]
+  created_at timestamptz
+  updated_at timestamptz
+
+  Note: 'Staff-managed fixed list (admins only). Founders pick up to 3 per product.'
+}
+
+Table products [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  maker_id char(26) [not null, ref: > users.id]
+  slug varchar(80) [not null, unique, note: 'public URL /p/{slug}. Always present (a draft needs name + slug). The UI prefills it from the name and the founder may edit it; the server never generates it, only validates: ^[a-z0-9]+(-[a-z0-9]+)*$, 3-80 chars, unique, not reserved. Editable only while draft / changes_requested (UI warns that changing it breaks existing links); no redirects.']
+  name varchar(60) [not null]
+  tagline varchar(80) [note: 'one-line pitch; nullable while draft']
+  description text [note: 'editable after launch']
+  website_url varchar(2048) [note: 'required main link (https); editable after launch']
+  logo_path varchar(255)
+  status product_status [not null, default: 'draft']
+  launch_date date [note: 'UTC day; goes live 00:00 UTC; changeable until launch; max per maker per day = settings.launch.max_per_maker_per_day (2)']
+  submitted_at timestamptz [note: 'last submit — review queue is ordered by this, oldest first']
+  approved_at timestamptz
+  launched_at timestamptz [note: 'set by scheduler at start of launch_date']
+  taken_down_at timestamptz
+  taken_down_by char(26) [ref: > users.id]
+  takedown_reason varchar(500)
+  votes_count integer [not null, default: 0, note: 'denormalised, counted votes only']
+  comments_count integer [not null, default: 0, note: 'denormalised: comments that are neither removed nor deleted (top level and replies; placeholders are not counted). CHECK products_comments_count_nonneg (comments_count >= 0). Changed only by relative updates under this product row lock, in the same transaction as the comment write']
+  hot_score double [not null, default: 0, note: 'live ranking score; RecomputeHotScores job runs every minute for today\'s live products only (order may lag ≤60s; vote counts are instant via WebSocket). FreezeDay writes the final score back when it freezes the day']
+  search_vector tsvector [note: "STORED GENERATED ALWAYS AS (setweight(to_tsvector('simple', launchpad_fold(name)), 'A') || setweight(to_tsvector('simple', launchpad_fold(coalesce(tagline, ''))), 'B') || setweight(to_tsvector('simple', launchpad_fold(left(coalesce(description, ''), 20000))), 'C')). No trigger, no job: PostgreSQL recomputes it when name, tagline or description is updated. Width: about 4 KB per product on average, and every Product read is select *, so it travels with every product query. Indexed by products_search_vector_gin"]
+  name_search text [note: 'STORED GENERATED ALWAYS AS (launchpad_fold(name)): the folded name used for typo matching (word_similarity) and the exact-name bonus. Indexed by products_name_search_trgm_gin']
+  created_at timestamptz
+  updated_at timestamptz
+  deleted_at timestamptz [note: 'soft delete — drafts only']
+
+  indexes {
+    (status, launch_date)
+    (launch_date, hot_score)
+    (votes_count desc, launch_date desc, id) [name: 'products_live_votes_launch_date_id_index', note: "PARTIAL: WHERE status = 'live' AND deleted_at IS NULL. Serves GET /leaderboards (votes first, then an optional launch-date window). Created by raw SQL: Blueprint cannot express DESC or WHERE"]
+    (maker_id, launch_date, id) [note: 'per-day cap lookup, keyset pagination']
+    (status, submitted_at, id) [note: 'review queue, oldest first']
+    (status, launched_at, id) [note: 'feed + newest sort, keyset pagination']
+    (maker_id, created_at, id) [note: 'GET /me/products']
+    (maker_id, launched_at, id) [note: 'GET /users/{handle}/products']
+    (updated_at desc, id desc) [name: 'products_staff_list_index', note: "PARTIAL: WHERE status <> 'draft' AND deleted_at IS NULL. The staff product list (GET /staff/products), latest change first, keyset. The query repeats the literal status <> 'draft' so the predicate is provable"]
+    (status, updated_at desc, id desc) [name: 'products_staff_status_index', note: 'PARTIAL: WHERE deleted_at IS NULL. The same list with a status filter']
+    search_vector [name: 'products_search_vector_gin', note: "GIN. PARTIAL: WHERE status = 'live' AND deleted_at IS NULL (the same predicate text as products_live_votes_launch_date_id_index, so a query that states it can use the index). Non-live text is never indexed. Created by raw SQL"]
+    name_search [name: 'products_name_search_trgm_gin', note: "GIN with gin_trgm_ops. PARTIAL: WHERE status = 'live' AND deleted_at IS NULL. Serves the typo arm (name_search %> folded query) for single-word queries of 3+ characters"]
+  }
+
+  Note: '''
+  Visibility rule: public only when status = live AND launch_date <= today (UTC).
+  Edit rules (enforced in actions / ProductPolicy):
+    draft, changes_requested   -> everything editable, including slug
+    pending                    -> locked (founder may withdraw back to draft)
+    approved, scheduled        -> locked except launch_date; to change anything else the founder
+                                  withdraws to draft (launch_date cleared) and resubmits
+    live                       -> only description, website_url, product_links; changes go live at once
+                                  and are logged in audit_logs ('product.edited_after_launch', meta before/after)
+    rejected, taken_down       -> read-only
+  Every public query goes through one Eloquent scope (Product::visible()).
+  Search (GET /search, sub-project 6) is Postgres only. Extensions unaccent and pg_trgm (trusted; created by migration
+  2026_10_21_000012 with IF NOT EXISTS; the production role must be allowed to create them). Functions, both CREATE OR REPLACE
+  because migrate:fresh keeps functions:
+    launchpad_fold(text) IMMUTABLE PARALLEL SAFE STRICT: btrim(regexp_replace(lower(unaccent('public.unaccent', normalize($1, NFKC))), '[\s!-/:-@\[-`{-~]+', ' ', 'g')).
+      IMMUTABLE on purpose (the dictionary is named, so the result cannot change) because only an immutable function may sit in a
+      generated column or an index. Changing it, or the unaccent rules, does NOT recompute stored values: rebuild both generated
+      columns and both indexes in one maintenance migration.
+    launchpad_prefix_tsquery(text) STABLE PARALLEL SAFE STRICT: query side only, never in an index. The typed last token as a
+      prefix tsquery built from plainto_tsquery(...):*, empty for an empty fold, so no input can raise a tsquery syntax error.
+  Migration 2026_10_21_000013 drops the old never-written plain search_vector and adds both generated columns in one ALTER TABLE
+  (ACCESS EXCLUSIVE, rewrites the table: maintenance window) and the two partial GIN indexes (plain CREATE INDEX blocks writes;
+  on a big table create them with CREATE INDEX CONCURRENTLY under the same names). Searchable text is name (A), tagline (B),
+  description (C) only: topic and maker names are not indexed (a generated column cannot read other tables).
+  Typo tolerance: word_similarity >= 0.5 (set per transaction through set_config) on single-word queries of 3+ characters only.
+  '''
+}
+
+Table product_topics [headercolor: #F97316] {
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  topic_id char(26) [not null, ref: > topics.id]
+
+  indexes {
+    (product_id, topic_id) [pk]
+    topic_id
+  }
+
+  Note: 'Max 3 topics per product (enforced in the action).'
+}
+
+Table product_links [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  kind link_kind [not null, note: 'any kind except website']
+  url varchar(2048) [not null, note: 'https only']
+  position smallint [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (product_id, position) [unique]
+    kind
+  }
+
+  Note: 'Optional extra links (max 5). website_url on products stays the required main link. Editable after launch.'
+}
+
+Table product_screenshots [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  path varchar(255) [not null]
+  position smallint [not null]
+  width integer
+  height integer
+  alt_text varchar(200)
+  created_at timestamptz
+
+  indexes {
+    (product_id, position) [unique]
+  }
+}
+
+Table product_reviews [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id]
+  reviewer_id char(26) [not null, ref: > users.id]
+  decision review_decision [not null]
+  note text [note: 'required for rejected / changes_requested; shown to the founder']
+  created_at timestamptz [not null]
+
+  indexes {
+    (product_id, created_at)
+  }
+
+  Note: 'Full history of review decisions (a product can bounce several times).'
+}
+
+Table featured_placements [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id]
+  starts_on date [not null]
+  ends_on date [not null]
+  created_by char(26) [not null, ref: > users.id]
+  created_at timestamptz
+
+  indexes {
+    (starts_on, ends_on)
+  }
+
+  Note: 'Staff-featured slots on the front page (paid slots later reuse this table).'
+}
+
+//////////////////////////////////////////////////////////////
+// 3. Voting + Ranking
+//////////////////////////////////////////////////////////////
+
+Table votes [headercolor: #22C55E] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id]
+  product_id char(26) [not null, ref: > products.id]
+  status vote_status [not null, default: 'counted']
+  voted_at timestamptz [not null, note: 'last time the vote was (re)cast']
+  removed_at timestamptz [note: 'null = active; set when the member takes the vote back']
+  toggle_count smallint [not null, default: 0, note: 'times un-voted / re-voted — anti-cheat signal']
+  ip_hash varchar(64) [note: 'anti-cheat signal (last cast)']
+  device_hash varchar(64) [note: 'anti-cheat signal (last cast)']
+  user_agent varchar(255)
+  voided_at timestamptz
+  voided_reason varchar(255)
+  created_at timestamptz [not null, note: 'first time this member voted on this product']
+  updated_at timestamptz
+
+  indexes {
+    (user_id, product_id) [unique, note: 'one vote per member per product — re-vote reuses the row']
+    (product_id, voted_at)
+    ip_hash
+    device_hash
+    product_id [name: 'votes_unpurged_signals_index', note: 'PARTIAL: WHERE ip_hash IS NOT NULL OR device_hash IS NOT NULL OR user_agent IS NOT NULL; lets the retention purge find old rows without scanning purged ones']
+  }
+
+  Note: '''
+  Soft removal: un-vote sets removed_at; re-vote clears it, bumps toggle_count, updates voted_at.
+  A vote counts only when removed_at IS NULL AND status IN (counted, flagged); voided never counts.
+  CHECK votes_voided_matches_status: (status = 'voided') = (voided_at IS NOT NULL).
+  FKs to users and products are plain (no cascade): a vote is history, voiding is a status, never a delete.
+  Own-product voting blocked in the action (maker_id <> user_id).
+  ip_hash / device_hash are keyed HMACs (64 chars), user_agent is truncated to 255 and NOT hashed.
+  Retention (built): launchpad:purge-retention sets all three to NULL (the columns are nullable, there is no CHECK on them)
+  when the product's launch_date is more than settings retention.vote_hashes_days (90) days before today UTC. The vote row,
+  status, counts and timestamps are untouched; nothing reads these columns after the vote is written.
+  '''
+}
+
+Table product_hourly_stats [headercolor: #22C55E] {
+  product_id char(26) [not null, ref: > products.id]
+  hour_start timestamptz [not null]
+  votes integer [not null, default: 0, note: 'net counted votes in this hour']
+  views integer [not null, default: 0, note: 'counted page views of the arrival hour: one per device per product per UTC day (deduped in Redis), not the maker, not staff, not bots, at most 25 devices per IP per product per day; flushed every minute by launchpad:flush-views as an additive upsert (APPROXIMATE: a minute may be counted twice if the batch drop fails after the commit, or lost on a Redis restart)']
+
+  indexes {
+    (product_id, hour_start) [pk]
+  }
+
+  Note: '''
+  Feeds the velocity ranking (3) and the votes/views-over-time charts (7).
+  CHECK product_hourly_stats_hour_start_on_the_hour: date_trunc('hour', hour_start, 'UTC') = hour_start.
+  votes is a net count (no CHECK on purpose: a negative sum can only come from a bug).
+  Vote: +1 on the bucket of voted_at, in the same transaction as the votes row.
+  Un-vote / void: -1 on the bucket of the original voted_at (so history stays honest).
+  hot_score = f(buckets) — formula lives in one PHP class (HotScore), tuned without schema changes.
+  Views are bucketed by their ARRIVAL hour. The flush inserts new buckets with votes = 0 and CastVote's upsert adds to existing ones (both
+  directions are pinned by a test). The flush locks the batch's product rows FOR KEY SHARE in id order before inserting any bucket (the
+  foreign key would otherwise deadlock with a vote that holds the product FOR UPDATE).
+  '''
+}
+
+Table daily_rankings [headercolor: #22C55E] {
+  launch_date date [not null]
+  product_id char(26) [not null, ref: > products.id]
+  rank smallint [not null]
+  votes_count integer [not null]
+  score double [not null]
+  frozen_at timestamptz [not null]
+
+  indexes {
+    (launch_date, product_id) [pk]
+    (launch_date, rank) [unique]
+  }
+
+  Note: '''
+  Written when the day ends (launchpad:freeze-day, 60 s after midnight UTC at the earliest). Past day pages read only
+  from here — the order of existing rows never changes. INSERT-ONLY: triggers daily_rankings_no_update,
+  daily_rankings_no_delete (row level) and daily_rankings_no_truncate (statement level) raise through
+  daily_rankings_immutable(). A product that goes live after its day was frozen is APPENDED with the next rank
+  (late arrival); a product taken down later keeps its row and is filtered out of reads by visible().
+  CHECK daily_rankings_rank_positive: rank >= 1. Ranks are therefore not always dense on a read (hidden products leave gaps).
+  '''
+}
+
+Table rank_snapshots [headercolor: #22C55E] {
+  product_id char(26) [not null, ref: > products.id]
+  captured_at timestamptz [not null]
+  rank smallint [not null]
+  score double [not null]
+
+  indexes {
+    (product_id, captured_at) [pk]
+    captured_at [name: 'rank_snapshots_captured_at_index', note: 'serves the retention purge; the pk leads with product_id']
+  }
+
+  Note: '''
+  Every 10 min during launch day (captured_at = the 10-minute mark, UTC) — powers "where it ranked" on the founder dashboard.
+  The founder dashboard timeline reads these marks of the LAUNCH day only; 180 days is the final lookback (after it timeline_available is false and best_rank is null, final_rank in daily_rankings stays).
+  Top 500 of today's list per mark (ranks above 500 are never stored); ON CONFLICT DO NOTHING makes a re-run a no-op;
+  skipped windows are permanent gaps; the 00:00 mark may be partial. CHECK rank_snapshots_rank_positive: rank >= 1.
+  Readers must apply visible() (a hidden product's old rows stay). No personal data. Purged by launchpad:purge-retention
+  after settings retention.rank_snapshots_days (180, 7 to 365; owner decision 2026-10-22, raised from 30;
+  see DECISIONS.md row 28).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 4. Community
+//////////////////////////////////////////////////////////////
+
+Table comments [headercolor: #A855F7] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade. Never changes after insert (trigger)']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK. Never changes after insert (trigger)']
+  parent_id char(26) [ref: > comments.id, note: 'null = top level; otherwise MUST be a top-level comment of the same product (trigger). Never changes after insert']
+  reply_to_user_id char(26) [ref: > users.id, note: 'who a reply answers (@-mention + notification); null for top level, and null when the answered author deleted their account']
+  body text [not null, note: 'plain text. The API accepts 1 to 1000 characters; the CHECK allows up to 2000 as a backstop. Wiped to an empty string when the author deletes the comment']
+  edited_at timestamptz [note: 'set by the author edit (precision 6); an unchanged body does not bump it']
+  removed_at timestamptz [note: 'removed by staff (precision 6); the body is KEPT for the staff view and never serialised publicly']
+  removed_by char(26) [ref: > users.id, note: 'staff member who removed it; set together with removed_at']
+  removed_reason varchar(255) [note: 'the staff note cut to 255 characters; the full note stays in reports.resolution_note']
+  replies_count integer [not null, default: 0, note: 'VISIBLE replies of a top-level comment (neither removed nor deleted); the Top sort needs it. Changed only by relative SET n = n + 1 under the product row lock. Stays on a deleted or removed top-level comment (its replies stay visible)']
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6 (microseconds): it sits in keyset cursors and the tie order. The Comment model has $timestamps = false, the actions and the factory set created_at and updated_at themselves']
+  updated_at timestamptz [note: 'precision 6']
+  deleted_at timestamptz [note: 'deleted by the author (precision 6). The row stays, the body is wiped; shown as a placeholder only while it still has visible replies']
+
+  indexes {
+    (product_id, replies_count desc, created_at desc, id desc) [name: 'comments_product_top_index', note: 'PARTIAL: WHERE parent_id IS NULL. sort=top keyset']
+    (product_id, created_at desc, id desc) [name: 'comments_product_newest_index', note: 'PARTIAL: WHERE parent_id IS NULL. sort=newest keyset']
+    (parent_id, created_at, id) [name: 'comments_parent_index', note: 'PARTIAL: WHERE parent_id IS NOT NULL. Replies, oldest first, keyset; also the window query that embeds the first 3 replies']
+    user_id [name: 'comments_user_index', note: 'the deleted-member job and the foreign-key lookups']
+    reply_to_user_id [name: 'comments_reply_to_user_index', note: 'PARTIAL: WHERE reply_to_user_id IS NOT NULL. Foreign-key lookups on user deletion']
+    removed_by [name: 'comments_removed_by_index', note: 'PARTIAL: WHERE removed_by IS NOT NULL. Foreign-key lookups']
+  }
+
+  Note: '''
+  One level of replies. Replying to a reply attaches to the same top-level parent and sets
+  reply_to_user_id (the author of the comment that was answered). Enforced in the action AND in the database:
+  trigger comments_reply_depth (function comments_enforce_reply_depth) fires BEFORE INSERT OR UPDATE OF
+  parent_id, product_id, user_id. On INSERT the parent must exist, have parent_id IS NULL and the same
+  product_id (SQLSTATE 23514); on UPDATE product_id, user_id and parent_id may not change (23514), so the
+  actions can read them without a lock.
+  CHECKs: comments_body_length (char_length(body) <= 2000), comments_body_present (deleted_at IS NOT NULL OR
+  char_length(body) >= 1), comments_reply_to_needs_parent (parent_id IS NOT NULL OR reply_to_user_id IS NULL),
+  comments_replies_count_nonneg (replies_count >= 0), comments_removed_pair ((removed_at IS NULL) = (removed_by IS NULL)).
+  Rows are never hard-deleted: a deletion is deleted_at + wiped body, a staff removal is removed_at/removed_by/removed_reason.
+  Counters: products.comments_count = comments that are neither removed nor deleted (top level and replies);
+  both counters change only by relative updates in the same transaction as the comment write, under the
+  PRODUCT row lock (one lock serialises every comment write of a product).
+  Ghost authors: a comment whose author deleted the account reads as deleted (anti-join on users.deleted_at)
+  but is still counted in both counters until the deleted-member job corrects them.
+  Lock order: product row -> comment rows (top-level parent first, then the reply) -> open report rows of the
+  target -> user rows (actor FOR SHARE).
+  '''
+}
+
+Table user_follows [headercolor: #A855F7] {
+  follower_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: DeleteAccount deletes the rows explicitly']
+  followed_id char(26) [not null, ref: > users.id]
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6: it sits in the keyset cursor of GET /me/follows/users']
+
+  indexes {
+    (follower_id, followed_id) [pk]
+    followed_id
+    (follower_id, created_at desc, followed_id desc) [name: 'user_follows_follower_created_index', note: 'GET /me/follows/users, newest follow first, keyset. Created by raw SQL: Blueprint cannot express DESC']
+  }
+
+  Note: '''
+  CHECK user_follows_not_self (follower_id <> followed_id).
+  No denormalised follower counters: followers_count / following_count are COUNT(*) on these indexed tables
+  (public on the profile). The LISTS are private: only GET /me/follows/users and /topics exist, there is no
+  follower list. DeleteAccount locks the member's follow rows first (ordered by follower_id, followed_id,
+  FOR UPDATE) and deletes them in both directions inside its transaction.
+  The following feed (GET /me/feed) is built at read time and NEVER cached (amends the earlier "cached per user
+  ~60s", DECISIONS 16/32): visible, launched products whose maker is followed OR that carry a followed topic,
+  never the member's own, ORDER BY launched_at DESC, id DESC, keyset. Two index-driven branches (followed makers
+  by LATERAL over products (maker_id, launched_at, id); followed topics) merged with UNION.
+  '''
+}
+
+Table topic_follows [headercolor: #A855F7] {
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK']
+  topic_id char(26) [not null, ref: > topics.id, note: 'plain FK, no cascade: DeleteTopic deletes the rows of an unused topic itself']
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
+
+  indexes {
+    (user_id, topic_id) [pk]
+    topic_id
+  }
+
+  Note: 'No CHECKs. Follow writes lock the topic row FOR SHARE, then the member row FOR SHARE (DeleteTopic locks the topic FOR UPDATE).'
+}
+
+Table reports [headercolor: #A855F7] {
+  id char(26) [pk, note: 'ULID']
+  reporter_id char(26) [not null, ref: > users.id]
+  reportable_type varchar(32) [not null, note: "polymorphic: 'product' | 'comment' (CHECK reports_type_check)"]
+  reportable_id char(26) [not null, note: 'NO foreign key (polymorphic): CreateReport validates the target']
+  reason report_reason [not null, note: 'varchar + CHECK: spam, abuse, misleading, inappropriate, other']
+  details varchar(1000) [note: 'required by the API when reason = other (validated, not a CHECK). Display text: staff-only, never in a member response']
+  status report_status [not null, default: 'open', note: 'varchar + CHECK: open, resolved, dismissed']
+  handled_by char(26) [ref: > users.id, note: 'null on a closed report = closed by the system (the target was deleted by its author or member); such reports count as resolved but not toward reporter reliability']
+  handled_at timestamptz [note: 'precision 6 (keyset order of the history list). Set exactly when status <> open']
+  resolution_note varchar(500) [note: "staff note, or 'deleted_by_author' for a system close"]
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
+  updated_at timestamptz [note: 'precision 6']
+
+  indexes {
+    (reporter_id, reportable_type, reportable_id) [unique, name: 'reports_open_unique', note: "PARTIAL: WHERE status = 'open'. One OPEN report per reporter per target (replaces the earlier full unique): a closed report never blocks a later one, the action refuses a re-report after a DISMISSED one (409 already_reviewed)"]
+    (status, created_at)
+    (reportable_type, reportable_id)
+    (handled_at desc, id desc) [name: 'reports_history_index', note: "PARTIAL: WHERE status <> 'open'. The staff history list, newest handled first, keyset. The query must use the same predicate (status <> 'open') for the planner to pick it"]
+    (reporter_id, status) [note: 'the open cap (count of a reporter open reports) and reporter reliability']
+  }
+
+  Note: '''
+  CHECKs: reports_type_check (reportable_type IN ('product','comment')), reports_open_matches_handled
+  ((status = 'open') = (handled_at IS NULL)), plus the enum CHECKs on reason and status.
+  Reports never hide content by themselves; content stays visible until a reviewer acts.
+  Member side (built): POST comments/{id}/report and products/{id}/report. 201 for a new report, 200 with the
+  same report when the member already has an OPEN one on the target (nothing written). Refused: own content
+  (403 own_content), an earlier dismissed report of this reporter on the target (409 already_reviewed), more open
+  reports than community.report_open_cap (409 report_limit). CreateReport serialises per reporter (reporter user
+  row FOR UPDATE, last in the lock order), so the cap is exact; a unique violation inside a savepoint is the
+  existing report. A comment deleted by its author closes its open reports as resolved with handled_by null.
+  Staff side (built): GET staff/reports (queue), /history, /{type}/{id} (detail), POST /{type}/{id}/resolve.
+  Queue = one row per target with an eligible open report (reporter verified, not suspended, not deleted). Order: open_reports
+  desc, score desc, oldest eligible open report asc, target id. open_reports and score ignore habitual false reporters
+  (>= 3 decided reports and reliability < 0.25: weight 0). Reliability is derived, never stored: (upheld + 1) / (decided + 2)
+  over the reporter's closed reports with handled_by NOT NULL (resolved = upheld); a system close (handled_by null) counts
+  for nothing. At most 100 rows: the top 70 by that order plus the 30 oldest remaining targets.
+  Resolve (remove_comment | take_down (admin) | dismiss) closes EVERY open report of the target together and changes the
+  target only if at least one open report was locked; with none it is a no-op (closed 0, no audit). An already removed or
+  deleted comment or taken-down product is left alone and its reports close as resolved.
+  Audit: comment.removed, report.resolved, report.dismissed (and the existing product.taken_down).
+  System closes (handled_by null): note 'deleted_by_author' (the author deleted the comment), 'account_deleted' (the
+  deleted-member job erased the comment), 'reporter_deleted' (status dismissed: a deleted reporter's report, closed by the
+  job only when the target has no other eligible open report).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 5. Notifications + Email
+//////////////////////////////////////////////////////////////
+
+Table notifications [headercolor: #EC4899] {
+  id uuid [pk, note: 'UUIDv7 written by RecordNotification (time-ordered)']
+  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE (a real FK replaces the polymorphic notifiable columns). Accounts are anonymised, never deleted: DeleteAccount removes the rows itself, the cascade covers a hard delete']
+  type varchar(40) [not null, note: 'CHECK notifications_type_valid: review_approved, review_rejected, review_changes_requested, launch_reminder, product_live, new_comment, export_ready. Digests are email only and have no bell type']
+  data jsonb [not null, note: "CHECK notifications_data_object (jsonb_typeof(data) = 'object'). Shape enforced by RecordNotification before any query: only the keys message_key (notifications.<type>), product_id, review_id, comment_id (string ids), params (an object of scalars, e.g. product_name, kind) and href (app-relative path starting with one slash). Never prose, a note, a comment body or an absolute URL. The client renders message_key and params as text"]
+  dedupe_key varchar(191) [not null, note: "idempotency: review:{review_id}, product_live:{product_id}:{launch_date}, comment:{comment_id}, launch_reminder:{product_id}:{launch_date}. The queued listener, a queue retry and the reconcile sweep derive the same key"]
+  read_at timestamptz [note: 'precision 6. CHECK notifications_read_after_created (read_at IS NULL OR read_at >= created_at); MarkNotificationsRead stamps GREATEST(now, created_at) so a faster clock cannot break it']
+  created_at timestamptz [not null, note: 'precision 6, in the keyset cursor. The Notification model has $timestamps = false; RecordNotification sets both stamps itself']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, dedupe_key) [unique, name: 'notifications_user_dedupe_unique', note: 'one bell row per member per event; INSERT ... ON CONFLICT DO NOTHING']
+    (user_id, created_at desc, id desc) [name: 'notifications_user_index', note: 'GET /me/notifications, keyset. Created by raw SQL: Blueprint cannot express DESC']
+    (user_id, created_at desc, id desc) [name: 'notifications_unread_index', note: 'PARTIAL: WHERE read_at IS NULL. The capped unread count (LIMIT 100) and the unread=1 list']
+    created_at [name: 'notifications_created_at_index', note: 'the retention purge (retention.notifications_days)']
+  }
+
+  Note: '''
+  In-site bell. NOT Laravel's database notification channel: User uses RoutesNotifications, not Notifiable, so no
+  notifications() relation can read this table by accident; actions query App\Models\Notification by user_id.
+  Written only by RecordNotification, in the same transaction as the outbox row (email_messages). The bell is never
+  gated by email preferences, and an unverified member is notified in-site too. A deleted or suspended recipient gets
+  nothing (the recipient row is read FOR SHARE, last in the lock order).
+  Unread count pushed live on the private channel user.{id} (event notification.count, payload {unread_count, notification_id}).
+  '''
+}
+
+Table email_preferences [headercolor: #EC4899] {
+  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE; DeleteAccount deletes the rows too']
+  type varchar(32) [not null, note: 'CHECK email_preferences_type_optional: only review_outcome, launch_reminder, product_live, new_comment, daily_top5, weekly_best, export_ready (EmailType::preferenceTypes()). verify_email / reset_password / email_change can never be stored, so never switched off']
+  enabled boolean [not null]
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, type) [pk]
+  }
+
+  Note: '''
+  Missing row = on. PATCH and the one-click unsubscribe upsert (INSERT ... ON CONFLICT (user_id, type) DO UPDATE);
+  turning a type back on writes enabled = true, the row is not deleted. Preferences gate EMAIL only.
+  Checked twice: when RecordNotification enqueues (saves a row) and again at SEND time inside SendEmailMessage,
+  where an opted-out row becomes suppressed (last_error = opted_out): off means we must not send.
+  export_ready is the seventh optional type (EmailType::preferenceTypes(), appended last); the CHECK was widened by migration 2026_10_21_000016.
+  '''
+}
+
+Table email_messages [headercolor: #EC4899] {
+  id char(26) [pk, note: 'ULID, lower-cased. Also the Message-ID header of the mail: <id@mail-domain>']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: accounts are anonymised, never hard-deleted; DeleteAccount scrubs the rows']
+  type email_type [not null, note: 'varchar(32) + CHECK email_messages_type_valid (all EmailType values). Outbox mail is the six optional types; the three auth mails use the queue, not this table']
+  idempotency_key varchar(191) [not null, unique, note: "e.g. review_outcome:{review_id}:{maker_id}, product_live:{product_id}:{launch_date}:{maker_id}, new_comment:{kind}:{product_id}:{yyyymmddHH}:{user_id} (the hour is the comment's created_at in UTC, never now()). INSERT ... ON CONFLICT DO NOTHING; unique index email_messages_idempotency_key_unique"]
+  to_email varchar(255) [not null, note: 'PERSONAL DATA: refreshed to the member current address at send time; purged with the row (retention.email_messages_days) and replaced by the anonymised address (deleted+<id>@invalid) on account deletion']
+  payload jsonb [not null, note: "CHECK email_messages_payload_object. Ids and small scalars only (strings up to 191 characters, ints, bools, null, or a list of id strings for digests), checked by RecordNotification: never an address, a body or a note. The mail re-reads names at send time"]
+  status email_status [not null, default: 'queued', note: 'varchar(16) + CHECK email_messages_status_valid']
+  attempts smallint [not null, default: 0, note: 'CHECK >= 0. Every claim increments it; a claim is identified by (id, attempts). suppress() and release() take the claim increment off again']
+  next_attempt_at timestamptz [note: "precision 6. The due time of a queued row and the lease end of a sending one; NULL once terminal. CHECK email_messages_due_state: (status IN ('queued','sending')) = (next_attempt_at IS NOT NULL)"]
+  last_error varchar(500) [note: 'class name + redacted, bounded message (addresses replaced by [email]), or a reason code: opted_out, user_deleted, user_suspended, email_unverified, user_missing, target_gone, lease_expired']
+  provider_message_id varchar(255) [note: "the Message-ID WE set (<id@domain>) as returned by the mailer, NOT a provider receipt"]
+  sent_at timestamptz [note: "precision 6. CHECK email_messages_sent_at_state: (status = 'sent') = (sent_at IS NOT NULL)"]
+  created_at timestamptz [not null, note: 'precision 6']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (next_attempt_at, id) [name: 'email_messages_due_index', note: "PARTIAL: WHERE status IN ('queued','sending'). The claim orders by (next_attempt_at, id) across both waiting states, so those are the key columns (a leading status would force a Sort of the whole due backlog); the predicate already restricts to the two waiting states. The WHERE of the claim repeats the predicate text"]
+    (user_id, type) [name: 'email_messages_user_type_index', note: 'the account scrub and suppression lookups']
+    created_at [name: 'email_messages_terminal_created_index', note: "PARTIAL: WHERE status IN ('sent','failed','suppressed'). The retention purge (never queued or sending rows); its WHERE repeats this predicate"]
+  }
+
+  Note: '''
+  Outbox. The row is written in the same transaction as the bell row (RecordNotification), so the mail survives a
+  provider outage and exists before the first attempt. launchpad:send-emails (every minute) claims up to 50 due rows
+  in one short transaction: SELECT ... ORDER BY next_attempt_at, id LIMIT n FOR UPDATE SKIP LOCKED inside a
+  MATERIALIZED CTE (so the LIMIT cannot be re-run), then UPDATE to status = sending, attempts + 1, next_attempt_at =
+  now + 10 min lease. The transaction commits BEFORE any send. SendEmailMessage then (1) locks the row, checks it is
+  still our claim (status sending AND the same attempts), applies the send-time rule (user exists, not deleted, not
+  suspended, verified e-mail, optional type not switched off, else suppressed with a reason code), refreshes to_email;
+  (2) renders and sends OUTSIDE any transaction; (3) locks again, confirms the claim, records the result.
+  States: queued -> sending -> sent | queued (retry) | failed | suppressed. failed is FINAL only (a permanent error or
+  attempts exhausted, including a lease-expired row already at its last attempt); a retryable failure goes back to queued.
+  Backoff after attempt n: 1m, 5m, 15m, 1h, 3h, 6h, 12h, 24h; 9 attempts then failed. Delivery is at least once (a crash
+  between the provider accepting and the record sends again after the lease, with the same Message-ID).
+  Permanent: RfcComplianceException, UnrenderableMail, an HTTP transport 4xx other than 408/429, or an SMTP
+  TransportException whose code is 500-599 (a hard bounce). 4xx, code 0 and everything else is transient.
+  A circuit breaker stops a run after 5 consecutive transient failures; unsent claims are released (queued, due now,
+  attempts - 1).
+  Account deletion (DeleteAccount): every row of the member gets to_email = the anonymised address and last_error NULL;
+  queued/sending rows also become suppressed (next_attempt_at NULL, payload '{}', last_error user_deleted). A row in flight
+  can still be delivered once to the old address (at least once).
+  launchpad:requeue-failed-emails (manual, not scheduled) puts failed rows back. A purged sent row frees its
+  idempotency key, so the retention window for email_messages must stay longer than the 48 h reconcile window plus a day.
+  '''
+}
+
+Table digest_runs [headercolor: #EC4899] {
+  kind varchar(16) [not null, note: 'CHECK digest_runs_kind_valid: daily_top5 | weekly_best']
+  period_date date [not null, note: 'the covered UTC day (daily) or the Monday of the covered week (weekly)']
+  product_ids jsonb [not null, note: "CHECK digest_runs_product_ids_valid: a JSON array of at most 5 product ids, chosen ONCE so every member gets the same list and a resumed run keeps it"]
+  last_user_id char(26) [note: 'resume cursor: the last user id fully processed; the next chunk continues after it']
+  enqueued integer [not null, default: 0, note: 'CHECK enqueued >= 0. Outbox rows inserted so far']
+  started_at timestamptz [not null, note: 'precision 6. A run younger than 18 h is resumed by the next tick (even past midnight), an older one is abandoned']
+  completed_at timestamptz [note: 'precision 6. NULL while the run is open. Also set when a run is ABANDONED (too old to resume), so completed_at set with enqueued below the eligible-member count means abandoned']
+
+  indexes {
+    (kind, period_date) [pk]
+    period_date [name: 'digest_runs_period_date_index', note: 'the retention purge deletes by period_date alone (the primary key leads with kind)']
+  }
+
+  Note: '''
+  Resumable digest queueing (launchpad:queue-digests, every 10 minutes). Chunks of 500 recipients, each chunk ONE
+  transaction: digest_runs row FOR UPDATE, then users FOR SHARE in id order (verified, not suspended, not deleted, not opted
+  out), INSERT INTO email_messages ... ON CONFLICT DO NOTHING (key {kind}:{period}:{user_id}), cursor update. An empty or
+  not-yet-frozen day makes no row until 23:00 UTC, then a run closed with enqueued = 0. No in-site notification is written
+  for a digest. Purged with retention.email_messages_days, measured from the UTC midnight (about a day before the mail rows).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 7. Founder dashboard + Export
+//////////////////////////////////////////////////////////////
+
+Table product_referrers_daily [headercolor: #14B8A6] {
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade']
+  day date [not null, note: 'the UTC day of the counted view']
+  source varchar(255) [not null, note: "a source key: 'direct', 'launchpad' (the site's own hosts), an allowlist key from config/referrers.php (google, bing, x, facebook, ...), a valid public host (max 80 chars, with a dot, alphabetic or punycode last label, never an IP) or 'other'. Never a path, query, credential or port. At most 50 distinct sources per product per day; the rest fold into 'other' at flush time. The category (search, social, internal, direct, other) is derived from the config, never stored"]
+  visits integer [not null, default: 0, note: 'CHECK product_referrers_daily_visits_nonneg (visits >= 0). Added to by the flush, never replaced']
+
+  indexes {
+    (product_id, day, source) [pk, note: 'serves every dashboard read (a prefix range) and the flush upsert']
+  }
+
+  Note: '''
+  "Where visitors came from" for the founder dashboard. Views over time live in product_hourly_stats.
+  No raw view rows and no person: a view is deduped in Redis (one per device per product per UTC day, device = HMAC of
+  the lp_did cookie or X-Device-Id; a per-IP cap of 25 devices per product per day, IPv6 reduced to /64) and
+  flushed here and to product_hourly_stats.views every minute in ONE transaction, so per product and day
+  sum(visits) = sum(views) of the day's hourly buckets (counters are approximate, see product_hourly_stats).
+  Redis keys (the `views` database, REDIS_VIEWS_DB): view:{product}:{Ymd}:{device}, viewip:{product}:{Ymd}:{ip},
+  views:pending, views:seq, views:batches, views:flushing:{n}, views:claim:{n}. They hold HMACs and counts only
+  and expire after 25 hours.
+  '''
+}
+
+Table exports [headercolor: #14B8A6] {
+  id char(26) [pk, note: 'ULID. Part of the authenticated download path; never a signed URL']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: the maker. DeleteAccount deletes the rows']
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade']
+  status varchar(16) [not null, default: 'queued', note: 'CHECK exports_status_valid: queued, processing, ready, failed, expired']
+  file_path varchar(255) [note: "key on the private `exports` disk: {product_id}/{export_id}.zip. Never sent to a client. Set when ready, cleared (NULL) once the file is really deleted, so a failed delete keeps the path for the purge to retry"]
+  file_size integer [note: 'bytes of the zip. CHECK exports_file_size_range: 0 to 5242880 (5 MB)']
+  row_counts jsonb [note: 'when ready: {summary, hourly, referrers_daily, rank_timeline} row counts of the four CSV files']
+  error varchar(32) [note: "short code only: generation_failed, too_large, stalled; never exception text. CHECK exports_error_only_when_failed (error IS NULL OR status = 'failed')"]
+  completed_at timestamptz [note: 'precision 6']
+  expires_at timestamptz [note: 'precision 6. Set when the export becomes ready to completed_at + retention.exports_days (default 7); a later change of the setting does not move it. A ready export also expires at once when a newer one replaces it']
+  created_at timestamptz [not null, note: 'precision 6']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, created_at) [name: 'exports_user_id_created_at_index']
+    product_id [unique, name: 'exports_one_active_per_product', note: "PARTIAL UNIQUE: WHERE status IN ('queued','processing','ready'). At most one export per product in flight or downloadable; RequestExport's lookups repeat this predicate. Created by raw SQL"]
+    (status, expires_at) [name: 'exports_status_expires_at_index', note: 'the purge and the sweeper']
+    (product_id, created_at desc, id desc) [name: 'exports_product_created_index', note: "the maker's list: latest five of a product, newest first"]
+  }
+
+  Note: '''
+  CHECK exports_ready_has_file: status <> 'ready' OR (file_path, file_size, completed_at, expires_at, row_counts are all NOT NULL).
+  A dashboard export: a zip of four CSV files (summary.csv, hourly.csv, referrers_daily.csv, rank_timeline.csv), built by the
+  queued GenerateExport job from the dashboard's own Actions in one REPEATABLE READ snapshot, written to the private disk and
+  streamed only through the authenticated download (GET me/products/{id}/exports/{export}/download; 409 export_not_ready,
+  410 export_expired). No staff export. States: queued -> processing -> ready | failed (too_large, generation_failed, stalled);
+  a replaced, past-expiry or deleted-owner export is expired. launchpad:sweep-exports (every 5 minutes) re-dispatches a queued row
+  older than 10 minutes and fails a stalled processing row. PurgeExports (launchpad:purge-retention) expires ready rows past
+  expires_at or of a deleted member, deletes the zips AFTER the chunk commits, and deletes failed/expired rows without a file
+  30 days after their last change. DeleteAccount deletes the member's rows in its transaction (leaves of the lock order) and the
+  zips after the commit. Migration 2026_10_21_000016 widened the CHECKs of notifications.type and email_preferences.type for export_ready.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 8. Anti-cheat
+//////////////////////////////////////////////////////////////
+
+Table auth_events [headercolor: #EF4444] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [ref: > users.id, note: 'null for failed logins on unknown emails']
+  event auth_event_type [not null]
+  ip_hash varchar(64)
+  device_hash varchar(64)
+  user_agent varchar(255)
+  created_at timestamptz [not null]
+
+  indexes {
+    (user_id, created_at)
+    ip_hash
+    device_hash
+  }
+
+  Note: 'Deleted by launchpad:purge-retention after settings.retention.auth_events_days (180); no trigger guards this table and no FK points at it. Security log + raw material for "one person, ten logins". Written from sub-project 1 onward.'
+}
+
+Table risk_signals [headercolor: #EF4444] {
+  id char(26) [pk, note: 'ULID']
+  kind varchar(24) [not null, note: 'CHECK risk_signals_kind_check: the eight risk_signal_kind values']
+  user_id char(26) [ref: > users.id, note: 'plain FK, no cascade (a signal is history). NULL for a product-level signal (the product form of vote_burst)']
+  product_id char(26) [ref: > products.id, note: 'plain FK, no cascade. NULL for a member-level signal']
+  weight smallint [not null, note: 'CHECK risk_signals_weight_range 0 to 100. Frozen at detection (after any discount); a later setting change never rewrites it. 0 for the product burst form']
+  details jsonb [not null, default: '{}', note: 'evidence: ids and counts only (user_ids, vote_ids, observed, threshold, window), never a hash, an address or an e-mail']
+  dedupe_key varchar(160) [not null, unique, note: 'one signal per finding: INSERT ... ON CONFLICT (dedupe_key) DO NOTHING, so a rerun costs nothing and an existing row (even a reviewed one) is never touched. Once-per-account kinds (fresh_account, disposable_email) and single_maker_voter have no date in the key; vote_burst:user, login_churn and coordinated_votes carry the UTC date of the run; vote_burst:product the hour']
+  detected_at timestamptz [not null, note: 'precision 0 (whole seconds)']
+  reviewed_by char(26) [ref: > users.id]
+  reviewed_at timestamptz [note: 'precision 0']
+  outcome varchar(20) [note: "'confirmed' | 'dismissed' (CHECK risk_signals_outcome_check)"]
+  review_note varchar(255)
+
+  indexes {
+    (weight desc, detected_at desc, id desc) [name: 'risk_signals_open_queue_index', note: 'PARTIAL: WHERE reviewed_at IS NULL. The open queue, worst first']
+    detected_at [name: 'risk_signals_unreviewed_detected_index', note: 'PARTIAL: WHERE reviewed_at IS NULL. The retention purge and the coordinated-votes candidates']
+    (reviewed_at desc, id desc) [name: 'risk_signals_reviewed_index', note: 'PARTIAL: WHERE reviewed_at IS NOT NULL. The recently-reviewed list and the purge of reviewed rows']
+    (detected_at desc, id desc) [name: 'risk_signals_detected_index', note: 'the all-signals list, newest first']
+    (user_id, detected_at)
+    (product_id, detected_at)
+  }
+
+  Note: '''
+  CHECKs: risk_signals_subject_present (user_id IS NOT NULL OR product_id IS NOT NULL) and risk_signals_review_complete
+  ((reviewed_by IS NULL) = (reviewed_at IS NULL) AND (reviewed_at IS NULL) = (outcome IS NULL)), plus the kind, outcome and weight checks.
+  Written only by launchpad:detect-abuse (every 5 minutes) through SignalWriter, which locks the referenced products and then users
+  FOR KEY SHARE in id order before inserting. Reviewed by staff (confirmed counts its full weight for ever, dismissed counts 0, open
+  decays linearly over anticheat.decay_days). Retention (PurgeRiskSignals): unreviewed after retention.risk_signals_days (365);
+  reviewed after retention.risk_signals_reviewed_days (90) from the review or at most 365 days from detection; reviewed
+  fresh_account / disposable_email / single_maker_voter rows are kept for ever so detection cannot resurrect them.
+  Staff never see a hash: votes expose 8-hex fingerprints, null once PurgeVoteHashes emptied the vote.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// Groups (dbdiagram draws a box around each)
+//////////////////////////////////////////////////////////////
+
+TableGroup accounts_1 {
+  users
+  user_links
+  settings
+  social_accounts
+  audit_logs
+  sessions
+  personal_access_tokens
+  password_reset_tokens
+  jobs
+  failed_jobs
+}
+
+TableGroup products_2 {
+  topics
+  products
+  product_topics
+  product_links
+  product_screenshots
+  product_reviews
+  featured_placements
+}
+
+TableGroup voting_3 {
+  votes
+  product_hourly_stats
+  daily_rankings
+  rank_snapshots
+}
+
+TableGroup community_4 {
+  comments
+  user_follows
+  topic_follows
+  reports
+}
+
+TableGroup notifications_5 {
+  notifications
+  email_preferences
+  email_messages
+}
+
+TableGroup dashboard_7 {
+  product_referrers_daily
+  exports
+}
+
+TableGroup anticheat_8 {
+  auth_events
+  risk_signals
+}

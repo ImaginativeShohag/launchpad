@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #fff4ed;
+  --color-brand-100: #ffe6d4;
+  --color-brand-200: #ffc9a8;
+  --color-brand-300: #ffa371;
+  --color-brand-400: #ff7338;
+  --color-brand-500: #ff5112;
+  --color-brand-600: #f03708;
+  --color-brand-700: #c72509;
+  --color-brand-800: #9e1f10;
+  --color-brand-900: #7f1d10;
+
+  --color-ink-50: #f7f7f8;
+  --color-ink-100: #eeeef1;
+  --color-ink-200: #dcdce2;
+  --color-ink-300: #bdbdc8;
+  --color-ink-400: #9898a8;
+  --color-ink-500: #74748a;
+  --color-ink-600: #5a5a70;
+  --color-ink-700: #42425a;
+  --color-ink-800: #26263a;
+  --color-ink-900: #16162a;
+  --color-ink-950: #0b0b18;
+
+  --shadow-soft: 0 1px 2px rgb(16 16 40 / 0.04), 0 4px 16px -4px rgb(16 16 40 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(16 16 40 / 0.04), 0 16px 40px -12px rgb(16 16 40 / 0.18);
+  --shadow-glow: 0 8px 30px -6px rgb(255 81 18 / 0.45);
+
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-ink-50 font-sans text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
+}
+
+@utility surface {
+  @apply rounded-2xl border border-ink-200/70 bg-white shadow-soft dark:border-white/8 dark:bg-ink-900;
+}
+
+@utility text-gradient {
+  @apply bg-gradient-to-r from-brand-500 via-pink-500 to-violet-500 bg-clip-text text-transparent;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

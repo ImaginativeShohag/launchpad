@@ -1,0 +1,85 @@
+# Local environment and credentials (keep sanitized setup templates)
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.direnv/
+auth.json
+.npmrc
+.pypirc
+.netrc
+*credentials*.json
+*service-account*.json
+*service_account*.json
+*.pem
+*.key
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.p8
+id_rsa*
+id_ed25519*
+.aws/
+.ssh/
+
+# Personal learning notes
+_learned.md
+
+# IDEs and editors
+.vscode/
+.idea/
+.fleet/
+.vs/
+*.iml
+*.ipr
+*.iws
+*.suo
+*.user
+.project
+.classpath
+.settings/
+.history/
+*.sublime-workspace
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*/
+.nfs*
+.directory
+
+# Dependencies, build output, and local runtime data
+node_modules/
+vendor/
+dist/
+dist-ssr/
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.sql
+*.sql.gz
+*.dump
+*.bak
+*.backup

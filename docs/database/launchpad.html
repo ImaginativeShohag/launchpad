@@ -1,0 +1,2397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Database schema</title>
+<!--
+  Dynamic preview of launchpad.dbml.
+  - Served over http (e.g. `php -S localhost:8000 -t docs/database`), it fetches ./launchpad.dbml live.
+  - Opened as file://, it uses the embedded snapshot below.
+  - Any .dbml file can be loaded with the "Load .dbml" button or by drag & drop.
+-->
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --panel-2:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+  --accent:#2563eb; --mark:#fde68a; --row-hit:#fffbeb;
+  --pk:#92400e; --pk-bg:#fef3c7; --fk:#1d4ed8; --fk-bg:#dbeafe; --uq:#6d28d9; --uq-bg:#ede9fe;
+  --nn:#334155; --nn-bg:#e2e8f0; --ai:#047857; --ai-bg:#d1fae5;
+  --shadow:0 1px 2px rgba(15,23,42,.05),0 6px 20px rgba(15,23,42,.05);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  --dg-bg:#f8fafc; --dg-dot:#cbd5e1; --edge:#94a3b8;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0b0f17; --panel:#111827; --panel-2:#0f1522; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2a3c;
+  --accent:#60a5fa; --mark:#854d0e; --row-hit:#1f1a0a;
+  --pk:#fcd34d; --pk-bg:#3a2a07; --fk:#93c5fd; --fk-bg:#132544; --uq:#c4b5fd; --uq-bg:#2a1f4a;
+  --nn:#cbd5e1; --nn-bg:#1e293b; --ai:#6ee7b7; --ai-bg:#063b2c; --shadow:none;
+  --dg-bg:#0d1320; --dg-dot:#1e293b; --edge:#64748b;
+}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+a{color:inherit}
+code{font-family:var(--mono);font-size:12.5px}
+mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
+.app{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}
+.app.no-side{grid-template-columns:minmax(0,1fr)}
+.app.no-side aside{display:none}
+.btn.icon{padding:6px 8px}
+.btn.icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6}
+.btn.icon[aria-pressed="false"]{color:var(--muted)}
+
+/* Sidebar */
+aside{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--border);background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:16px}
+.search{position:relative}
+.search input{width:100%;padding:9px 34px 9px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font:inherit}
+.search input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.search kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);font:11px var(--mono);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 5px}
+.side-h{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;display:flex;justify-content:space-between}
+.side-h button{all:unset;cursor:pointer;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500}
+.grp-row{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;user-select:none}
+.grp-row:hover{background:var(--panel-2)}
+.grp-row span:nth-of-type(2){flex:1}
+.dot{width:10px;height:10px;border-radius:3px;background:var(--c);flex:none}
+.n{font:11px var(--mono);color:var(--muted)}
+.nav-group{margin-bottom:10px}
+.nav-group.off{display:none}
+.nav-h{font-size:12px;font-weight:600;color:var(--muted);padding:2px 6px}
+#nav a{display:flex;align-items:center;gap:8px;padding:3px 6px 3px 10px;border-radius:6px;text-decoration:none;font:12.5px var(--mono)}
+#nav a span.name{flex:1;overflow:hidden;text-overflow:ellipsis}
+#nav a:hover{background:var(--panel-2)}
+#nav a.dim{opacity:.35}
+
+/* Header */
+main{padding:22px 28px 60px;min-width:0}
+.top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}
+.subtitle{margin:4px 0 0;color:var(--muted);max-width:75ch}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.source{font-size:12px;color:var(--muted)}
+.top-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.serve-hint{margin:0;max-width:440px;font-size:12px;color:var(--muted);text-align:right}
+.serve-hint[hidden]{display:none}
+.serve-hint .cmd{display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:3px 4px 3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2)}
+.serve-hint .cmd code{color:var(--text)}
+.serve-hint .cmd button{all:unset;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:4px;color:var(--accent)}
+.serve-hint .cmd button:hover{background:var(--panel)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:6px 11px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px 12px;min-width:92px}
+.stat b{display:block;font-size:18px}
+.stat span{font-size:12px;color:var(--muted)}
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+details.about{margin:8px 0 4px;font-size:13px}
+details.about summary{cursor:pointer;color:var(--muted)}
+details.about pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font:12.5px/1.55 var(--mono);margin:8px 0 0}
+
+/* Toolbar */
+.toolbar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 0;margin:8px 0 14px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.tabs{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:3px}
+.tabs button{all:unset;cursor:pointer;padding:5px 12px;border-radius:6px;font-size:13px;color:var(--muted)}
+.tabs button.on{background:var(--accent);color:#fff}
+.tabs button .n{color:inherit;opacity:.75;margin-left:4px}
+.toolbar .spacer{flex:1}
+.toolbar label{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.toolbar select{font:inherit;font-size:13px;padding:4px 6px;border-radius:7px;border:1px solid var(--border);background:var(--panel);color:var(--text)}
+
+/* Cards */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,640px),1fr))}
+.grid.enums{grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;scroll-margin-top:76px;align-self:start}
+.card>header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:4px solid var(--hc);background:linear-gradient(color-mix(in srgb,var(--hc) 12%,transparent),transparent);cursor:pointer;user-select:none}
+.card>header h2{margin:0;font:600 15px var(--mono)}
+.chev{display:inline-block;transition:transform .15s;color:var(--muted);font-size:11px;transform:rotate(90deg)}
+.card.collapsed .chev{transform:none}
+.card.collapsed .body{display:none}
+.tag{font-size:11.5px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--hc) 18%,transparent);color:var(--text);white-space:nowrap}
+.spacer{flex:1}
+.meta{font-size:12px;color:var(--muted);white-space:nowrap}
+.tnote{margin:0;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel-2);color:var(--muted);white-space:pre-line;font-size:13px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel-2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--panel-2)}
+tr.hit td{background:var(--row-hit)}
+td.pos{color:var(--muted);font:11px var(--mono);width:1%}
+td.cname{font:600 13px var(--mono);white-space:nowrap}
+td.ctype{white-space:nowrap}
+td.ctype code{color:var(--muted)}
+td.ctype a.enum{color:var(--uq);text-decoration:none;border-bottom:1px dashed currentColor}
+td.keys{white-space:nowrap}
+td.def code{background:var(--panel-2);border:1px solid var(--border);padding:0 5px;border-radius:4px}
+td.def code.expr{color:var(--ai)}
+td.note{color:var(--muted);font-size:13px;min-width:200px;white-space:pre-line}
+.b{display:inline-block;font:600 10.5px/1.6 var(--mono);padding:0 6px;border-radius:4px;margin:1px 4px 1px 0;background:var(--nn-bg);color:var(--nn);text-decoration:none;vertical-align:middle}
+.b.pk{background:var(--pk-bg);color:var(--pk)}
+.b.fk{background:var(--fk-bg);color:var(--fk)}
+a.b.fk:hover{outline:1px solid var(--fk)}
+.b.uq{background:var(--uq-bg);color:var(--uq)}
+.b.ai{background:var(--ai-bg);color:var(--ai)}
+.b.null{background:transparent;color:var(--muted);font-weight:400;padding:0}
+.b.idx{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.indexes,.incoming{padding:10px 14px;border-top:1px solid var(--border);font-size:13px}
+.lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-right:8px}
+.indexes ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
+.indexes li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ixnote,.muted{color:var(--muted)}
+.chip{display:inline-block;margin:3px 6px 3px 0;padding:1px 8px;border:1px solid var(--border);border-radius:999px;font:12px var(--mono);text-decoration:none}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+ul.vals{list-style:none;margin:0;padding:8px 14px;display:grid;gap:5px}
+ul.vals li{display:flex;gap:10px;align-items:baseline}
+ul.vals li span{color:var(--muted);font-size:12.5px}
+.card.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%,30%{box-shadow:0 0 0 3px var(--hc)}100%{box-shadow:var(--shadow)}}
+
+/* Relationships */
+.rel{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+.rel th[data-sort]{cursor:pointer}
+.rel th[data-sort]:hover{color:var(--text)}
+.rel td{font-size:13px}
+.rel td a{font-family:var(--mono);text-decoration:none;color:var(--fk)}
+.rel td a:hover{text-decoration:underline}
+
+/* Diagram */
+.diagram{position:relative;height:70vh;min-height:420px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--dg-bg)}
+.diagram svg{display:block;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.diagram svg.panning{cursor:grabbing}
+.dg-dot{fill:var(--dg-dot)}
+.tbl{cursor:pointer}
+.tbl,.edge{transition:opacity .15s}
+.tbl-bg{fill:var(--panel);filter:drop-shadow(0 2px 6px rgba(15,23,42,.12))}
+.tbl-outline{fill:none;stroke:var(--border)}
+.tbl-head{fill:var(--hc)}
+.tbl-name{fill:#fff;font:600 13px var(--sans)}
+.tbl-note circle{fill:rgba(255,255,255,.28)}
+.tbl-note text{fill:#fff;font:italic 700 10.5px Georgia,serif}
+.row-bg{fill:transparent}
+.row.alt .row-bg{fill:var(--panel-2)}
+.row:hover .row-bg{fill:color-mix(in srgb,var(--accent) 10%,transparent)}
+.row.match .row-bg{fill:var(--mark)}
+.row.hl .row-bg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
+.cn{fill:var(--text);font:12.5px var(--sans)}
+.cn.pk{font-weight:700}
+.ct{fill:var(--muted);font:11.5px var(--mono)}
+.ct.enum{fill:var(--uq)}
+.pk-ico{fill:none;stroke:var(--pk);stroke-width:1.6;stroke-linecap:round}
+.edge .line,.edge .mark{fill:none;stroke:var(--edge);stroke-width:1.4}
+.edge .hit{fill:none;stroke:transparent;stroke-width:12}
+.edge.hl .line,.edge.hl .mark{stroke:var(--accent);stroke-width:2.2}
+.edge.dim,.tbl.dim{opacity:.18}
+.diagram.focus .edge:not(.hl){opacity:.07}
+.diagram.focus .tbl:not(.hl){opacity:.3}
+.tbl.sel .tbl-outline{stroke:var(--accent);stroke-width:2}
+.tbl.pulse .tbl-outline{animation:dgpulse 1.3s ease-out}
+@keyframes dgpulse{0%,40%{stroke:var(--accent);stroke-width:7}100%{stroke-width:2}}
+.grp-box{fill:color-mix(in srgb,var(--gc) 5%,transparent);stroke:color-mix(in srgb,var(--gc) 50%,transparent);stroke-width:1.5;stroke-dasharray:7 5}
+.grp-label{fill:var(--gc);font:700 14px var(--sans)}
+.dg-controls{position:absolute;right:12px;bottom:12px;display:flex;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:4px;box-shadow:var(--shadow)}
+.dg-controls button{all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;font-size:13px;min-width:16px;text-align:center}
+.dg-controls button:hover{background:var(--panel-2)}
+.dg-hint{position:absolute;left:12px;bottom:12px;font-size:12px;color:var(--muted);background:color-mix(in srgb,var(--panel) 85%,transparent);padding:4px 10px;border-radius:8px;border:1px solid var(--border);pointer-events:none}
+body.dg-mode .stats,body.dg-mode .legend,body.dg-mode .about,body.dg-mode .subtitle{display:none}
+body.dg-mode main{padding-bottom:16px}
+@media (max-width:900px){.dg-hint{display:none}}
+
+.empty{padding:50px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px}
+.error{display:none;margin:12px 0;padding:10px 14px;border-radius:10px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-size:13px}
+.error.show{display:block}
+body.dragging::after{content:"Drop a .dbml file to preview it";position:fixed;inset:12px;display:grid;place-items:center;border:3px dashed var(--accent);border-radius:16px;background:color-mix(in srgb,var(--bg) 85%,transparent);font-size:20px;font-weight:600;z-index:50}
+@media (max-width:900px){.app{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}#nav{display:none}main{padding:16px}}
+@media print{aside,.toolbar,.actions{display:none}.app{display:block}.card{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="search">
+      <input id="search" type="search" placeholder="Search tables, columns, notes…" autocomplete="off" spellcheck="false">
+      <kbd>/</kbd>
+    </div>
+    <div>
+      <p class="side-h">Groups <button id="groups-all" type="button">all</button></p>
+      <div id="groups"></div>
+    </div>
+    <div>
+      <p class="side-h">Tables</p>
+      <nav id="nav"></nav>
+    </div>
+  </aside>
+
+  <main>
+    <div class="top">
+      <div>
+        <h1 id="title">Database schema</h1>
+        <p class="subtitle" id="subtitle"></p>
+      </div>
+      <div class="top-right">
+        <div class="actions">
+          <span class="source" id="source"></span>
+          <label class="btn" for="file">Load .dbml</label>
+          <input id="file" type="file" accept=".dbml,.txt,text/plain" hidden>
+        </div>
+        <p class="serve-hint" id="serve-hint" hidden>
+          Opened as a file — showing the embedded snapshot, which may be stale.
+          For the live <code>launchpad.dbml</code>, run from the project root and open
+          <a href="http://localhost:8000/launchpad.html">localhost:8000/launchpad.html</a>:<br>
+          <span class="cmd"><code id="serve-cmd">php -S localhost:8000 -t docs/database</code><button type="button" id="serve-copy">Copy</button></span>
+        </p>
+      </div>
+    </div>
+    <div class="error" id="error"></div>
+    <div class="stats" id="stats"></div>
+    <div class="legend" id="legend"></div>
+    <details class="about" id="about"><summary>Schema notes</summary><pre id="about-text"></pre></details>
+
+    <div class="toolbar">
+      <button class="btn icon" type="button" id="btn-sidebar" title="Toggle sidebar (\)" aria-label="Toggle sidebar" aria-pressed="true">
+        <svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/></svg>
+      </button>
+      <div class="tabs" id="tabs">
+        <button type="button" data-view="diagram">Diagram</button>
+        <button type="button" data-view="tables">Tables<span class="n" id="n-tables"></span></button>
+        <button type="button" data-view="enums">Enums<span class="n" id="n-enums"></span></button>
+        <button type="button" data-view="refs">Relationships<span class="n" id="n-refs"></span></button>
+      </div>
+      <span class="spacer"></span>
+      <label><input type="checkbox" id="opt-notes"> Notes</label>
+      <label><input type="checkbox" id="opt-indexes"> Indexes</label>
+      <select id="opt-order" title="Column order">
+        <option value="schema">Schema order</option>
+        <option value="keys">Keys first</option>
+        <option value="alpha">A → Z</option>
+      </select>
+      <button class="btn" type="button" id="btn-collapse">Collapse all</button>
+      <button class="btn" type="button" id="btn-expand">Expand all</button>
+    </div>
+
+    <div id="content"></div>
+  </main>
+</div>
+
+<script type="text/plain" id="dbml-source">
+// Launchpad — full database design (PostgreSQL 17, Laravel 13)
+// Paste into https://dbdiagram.io (or open with any DBML viewer).
+//
+// Header colours = sub-project that owns the table:
+//   blue    #3B82F6  1. Foundation + Accounts
+//   slate   #64748B  1. Framework tables (Laravel / Sanctum)
+//   orange  #F97316  2. Products + Review
+//   green   #22C55E  3. Voting + Ranking
+//   purple  #A855F7  4. Community
+//   pink    #EC4899  5. Notifications + Email
+//   teal    #14B8A6  7. Founder dashboard + Export
+//   red     #EF4444  8. Anti-cheat
+// (6. Search adds no tables: two stored generated columns on products (search_vector, name_search), two partial GIN indexes,
+//  the extensions unaccent and pg_trgm and two SQL functions, launchpad_fold and launchpad_prefix_tsquery. See the products note.)
+//
+// Conventions
+// - Decision log: docs/database/DECISIONS.md
+// - Primary keys: ULID char(26) everywhere (HasUlids, foreignUlid, ulidMorphs). Safe to expose.
+//   Exceptions: Laravel internals (jobs, failed_jobs, personal_access_tokens.id) keep bigint.
+//   Human URLs still use users.handle (/u/{handle}) and products.slug (/p/{slug}).
+// - All timestamps are timestamptz (UTC). "Launch day" = a UTC calendar day, 00:00–24:00 UTC (no DST, one shared "today").
+// - Enums are stored as varchar + CHECK constraint, mapped to PHP backed enums (not native PG enums).
+// - Roles: single users.role column; permissions live in Laravel Policies (no role/permission tables).
+// - Images: path column on the owner, files on a Laravel disk (local → S3/R2), processed by one StoreImage action
+//   (resize, strip EXIF/GPS, WebP). No shared media table.
+// - IPs and device ids are stored only as HMAC-SHA256 hashes (secret key), never raw.
+//   device id = HttpOnly `lp_did` cookie (random ULID, 2 years) on web; X-Device-Id install id on mobile.
+//   No browser fingerprinting.
+// - Live updates: Laravel Reverb (WebSockets) via broadcasting. Private channel user.{id} for the bell,
+//   public channel product.{id} for vote counts, public channel today for re-rank events. No schema impact.
+// - Community (sub-project 4, phases A, B and C built): comments with one level of replies, member and topic follows, the
+//   following feed (read time, never cached), member-side reports, the staff report queue and per-target resolution,
+//   admin suspension and the deleted-member comments job (phase C).
+// - Founder dashboard (sub-project 7, phases A, B and C built): page view counting (Redis, flushed every minute into
+//   product_hourly_stats.views and product_referrers_daily) and the maker/staff dashboard reads. Exports (table `exports`) are
+//   phase C (exports, 13 scheduled commands in total).
+// - Notifications and email (sub-project 5, phases A, B and C built): the bell (notifications), email_preferences, the
+//   email_messages outbox, digest_runs, launch reminders, daily and weekly digests, their retention purges and the
+//   DeleteAccount hooks (11 scheduled commands in total).
+// - Retention (daily `launchpad:purge-retention`, 03:15 UTC, built 2026-10-21; values in settings): auth_events 180
+//   days; votes.ip_hash / device_hash / user_agent nulled once the product's launch_date is more than 90 days before
+//   today (vote row stays); rank_snapshots 180 days; audit_logs rows kept forever but their ip_hash / user_agent nulled after 365 days
+//   (retention.audit_network_days; a narrow, flag-guarded exception in the append-only trigger). risk_signals: 365 days
+//   unreviewed, 90 days after the review (reviewed once-per-account kinds are kept for ever); see the risk_signals table.
+
+Project launchpad {
+  database_type: 'PostgreSQL'
+  Note: 'Launchpad — daily product launches with voting. JSON API for web + future mobile app.'
+}
+
+//////////////////////////////////////////////////////////////
+// Enums
+//////////////////////////////////////////////////////////////
+
+Enum user_role {
+  member
+  reviewer
+  admin
+}
+
+Enum product_status {
+  draft
+  pending           [note: 'submitted, waiting for review']
+  changes_requested
+  rejected
+  approved          [note: 'approved, no launch day picked yet']
+  scheduled         [note: 'launch day picked, still hidden']
+  live              [note: 'launch day reached, public']
+  taken_down
+}
+
+Enum link_kind {
+  website   [note: 'profiles only — products use products.website_url']
+  app_store
+  play_store
+  github
+  x
+  linkedin
+  docs
+  youtube
+  other
+}
+
+Enum review_decision {
+  approved
+  rejected
+  changes_requested
+}
+
+Enum vote_status {
+  counted
+  flagged  [note: 'set by launchpad:detect-abuse for members at or above anticheat.flag_risk_score; STILL COUNTS everywhere (votes_count, hourly buckets, hot score, rankings) and is un-flagged when the score drops; staff void a vote explicitly']
+  voided   [note: 'removed by anti-cheat or staff; not counted']
+}
+
+Enum report_reason {
+  spam
+  abuse
+  misleading
+  inappropriate
+  other
+}
+
+Enum report_status {
+  open
+  resolved
+  dismissed
+}
+
+Enum email_type {
+  verify_email
+  reset_password
+  email_change      [note: 'confirm link to new address + heads-up to old address; cannot be turned off']
+  review_outcome
+  launch_reminder
+  product_live
+  new_comment
+  daily_top5
+  weekly_best
+  export_ready      [note: 'optional (the seventh preference type); sent when a dashboard export is ready, links to the dashboard']
+}
+
+Enum email_status {
+  queued
+  sending     [note: 'claimed by a worker; next_attempt_at is the lease end']
+  sent
+  failed      [note: 'FINAL only: a permanent error, or all attempts used (the outbox gives up after 9)']
+  suppressed  [note: 'not allowed at send time (opted out, unverified, suspended, deleted, target gone) — never delivered']
+}
+
+Enum export_status {
+  queued
+  processing
+  ready
+  failed
+  expired
+}
+
+Enum auth_event_type {
+  signup
+  login_succeeded
+  login_failed
+  logout
+  google_linked
+  email_verified
+  password_reset_requested
+  password_reset
+  password_changed
+  token_created
+  token_revoked
+  account_deleted
+  email_change_requested
+  email_changed
+}
+
+Enum risk_signal_kind {
+  shared_device       [note: 'R1: several accounts voted the same product from one device hash']
+  ip_cluster          [note: 'R2: many accounts voted the same product from one IP hash (discounted when all are established accounts)']
+  vote_burst          [note: 'R3: votes arriving faster than humanly plausible; product form (user_id NULL, weight 0) and member form']
+  fresh_account       [note: 'R4: voted minutes after the account was created; once per account']
+  disposable_email    [note: 'R5: the e-mail domain is on the disposable list; once per account']
+  single_maker_voter  [note: 'R6: most of the member votes went to one maker']
+  login_churn         [note: 'R7: several voting accounts signed up or logged in from one device']
+  coordinated_votes   [note: 'R8: a group of accounts voting the same products']
+}
+
+//////////////////////////////////////////////////////////////
+// 1. Foundation + Accounts
+//////////////////////////////////////////////////////////////
+
+Table users [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  handle varchar(30) [not null, unique, note: 'lowercase ^[a-z0-9_]{3,30}$, public URL /u/{handle}']
+  name varchar(80) [not null]
+  email varchar(255) [not null, unique, note: 'stored lowercased + trimmed']
+  email_verified_at timestamptz [note: 'null = unverified; Google sign-ups set immediately']
+  pending_email varchar(255) [note: 'requested new email; becomes email only after the link sent to it is confirmed']
+  pending_email_expires_at timestamptz [note: 'link valid 60 min; old address gets a cancel link']
+  password varchar(255) [note: 'argon2id hash; null = Google-only account']
+  role user_role [not null, default: 'member', note: 'founder is derived (has products), not stored']
+  headline varchar(120) [note: 'one line about them']
+  avatar_path varchar(255) [note: 'path on configured disk (public / s3)']
+  risk_score smallint [not null, default: 0, note: "0-100 (CHECK users_risk_score_range), maintained by launchpad:detect-abuse: per kind the strongest signal contribution (dismissed 0, confirmed full weight, open faded linearly over anticheat.decay_days), summed, capped at 100. At anticheat.flag_risk_score (70) the member's votes on yesterday's and today's launch days are flagged (they still count)"]
+  suspended_at timestamptz [note: 'set by SuspendUser (admin only; never on oneself or an admin: 403 cannot_suspend); signs the member out everywhere, blocks sign-in and all actions; their products, comments, votes and follows stay as they are. RestoreUser clears it and suspended_reason; the old reason is kept in the audit row (user.restored, meta previous_reason)']
+  suspended_reason varchar(500)
+  last_login_at timestamptz
+  remember_token varchar(100)
+  deleted_at timestamptz [note: 'account deleted + anonymised; row kept so FKs and history stay valid']
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    role
+    suspended_at
+    (created_at desc, id desc) [name: 'users_created_at_id_index', note: 'PARTIAL: WHERE deleted_at IS NULL. The admin member directory (GET /admin/users), newest first, keyset; id DESC so the cursor has one direction. Created by raw SQL (plain CREATE INDEX: maintenance window, or CREATE INDEX CONCURRENTLY by hand first)']
+    risk_score [name: 'users_risk_score_index', note: 'PARTIAL: (risk_score DESC, id DESC) WHERE risk_score > 0. The staff members-by-risk list, worst first; id DESC so the keyset has one direction. Created by raw SQL']
+  }
+
+  Note: '''
+  Account deletion = anonymise, never hard delete (DeleteAccount action, one transaction):
+    name -> 'Deleted member', handle -> 'deleted-{ulid}', email -> 'deleted+{ulid}@invalid'
+    password, avatar_path, headline, remember_token -> cleared
+    user_links, social_accounts, sessions, personal_access_tokens, follows, email_preferences -> deleted
+    votes on not-yet-frozen days -> status voided (rank recomputes); frozen daily_rankings untouched
+    comments -> shown as "[deleted]" (masked at read time at once; bodies wiped and counters corrected by the DeleteMemberComments job); products -> taken down
+    audit_logs / auth_events / risk_signals keep the id (audit_logs also keeps ip_hash and user_agent until retention.audit_network_days passes, see the audit_logs note)
+  '''
+}
+
+Table user_links [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
+  kind link_kind [not null]
+  label varchar(40) [note: "optional display text, e.g. 'Blog'"]
+  url varchar(2048) [not null, note: 'https only']
+  position smallint [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (user_id, position) [unique]
+  }
+
+  Note: 'Public profile links, max 5. Same link_kind enum and validation as product_links.'
+}
+
+Table social_accounts [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
+  provider varchar(20) [not null, note: "'google'"]
+  provider_user_id varchar(255) [not null, note: 'Google sub — never match on email alone']
+  provider_email varchar(255) [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (provider, provider_user_id) [unique]
+    (user_id, provider) [unique, note: 'one identity per provider per account']
+    user_id
+  }
+}
+
+Table audit_logs [headercolor: #3B82F6] {
+  id char(26) [pk, note: 'ULID']
+  actor_id char(26) [ref: > users.id, note: 'null = system. Users are never hard-deleted, so the FK has no ON DELETE action (a SET NULL cascade would be an UPDATE that the immutability trigger blocks)']
+  action varchar(64) [not null, note: "e.g. 'product.taken_down', 'user.suspended', 'review.approved'"]
+  subject_type varchar(64) [note: 'polymorphic: users / products / comments / reports …']
+  subject_id char(26)
+  meta jsonb [not null, default: '{}', note: 'before/after values, reason']
+  ip_hash varchar(64)
+  user_agent varchar(255)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (subject_type, subject_id)
+    (actor_id, created_at)
+    (action, created_at)
+    created_at [name: 'audit_logs_unpurged_network_index', note: 'PARTIAL: WHERE ip_hash IS NOT NULL OR user_agent IS NOT NULL; lets the retention purge find old rows without scanning emptied ones']
+  }
+
+  Note: 'Append-only. A Postgres trigger raises on UPDATE/DELETE/TRUNCATE. No updated_at. Rows are never deleted. ip_hash (keyed HMAC) and user_agent (truncated) are written on every row by Audit and set to NULL by launchpad:purge-retention once created_at is older than settings retention.audit_network_days (365, 30 to 3650). The only UPDATE the trigger lets through: both columns set to NULL, nothing else changed, and the transaction set the transaction-local flag launchpad.audit_purge = on (only the purge does). Not a privilege boundary. Built 2026-10-21, see DECISIONS.md row 23.'
+}
+
+Table settings [headercolor: #3B82F6] {
+  key varchar(64) [pk, note: "e.g. 'launch.max_per_maker_per_day'"]
+  value jsonb [not null, note: 'typed by the PHP Setting enum that owns the key']
+  updated_by char(26) [ref: > users.id, note: 'null = seeded default']
+  updated_at timestamptz
+
+  Note: '''
+  Admin-editable business rules. Every key is declared in the PHP SettingKey enum and seeded by SettingSeeder
+  (type, default, min/max) — admins edit values, never create keys. Cached; cache cleared on update.
+  Each change also writes audit_logs (action = 'setting.updated', meta = {before, after}).
+  Seeded keys:
+    launch.max_per_maker_per_day = 2
+    launch.max_days_ahead = 60
+    product.max_topics = 3
+    product.max_screenshots = 6
+    product.max_pending_per_maker = 5
+    anticheat.flag_risk_score = 70      (integer 1 to 100: members at or above it have their recent votes flagged; flagged votes still count)
+    anticheat.weight.shared_device = 40, .ip_cluster = 15, .vote_burst = 25, .fresh_account = 15, .disposable_email = 25,
+      .single_maker_voter = 20, .login_churn = 20, .coordinated_votes = 35   (integers 0 to 100; 0 switches the rule off)
+    anticheat.group_window_hours = 24 (1-48), anticheat.shared_device.min_accounts = 3 (2-20), anticheat.ip_cluster.min_accounts = 5 (2-50),
+      anticheat.ip_cluster.established_days = 30 (1-365), anticheat.burst.window_minutes = 10 (1-60), anticheat.burst.min_votes = 30 (5-1000),
+      anticheat.user_burst.votes = 8 (3-50), anticheat.user_burst.minutes = 5 (1-60), anticheat.fresh_account.minutes = 30 (1-1440),
+      anticheat.single_maker.min_votes = 5 (3-50), anticheat.single_maker.days = 30 (7-90), anticheat.login_churn.min_accounts = 4 (2-50),
+      anticheat.coordinated.min_accounts = 3 (2-20), anticheat.coordinated.min_products = 4 (2-50), anticheat.decay_days = 14 (1-90),
+      anticheat.coordinated.max_popularity_pct = 40 (5-100)   (integers)
+    anticheat.ip_cluster.discount = "0.5" (0-1), anticheat.burst.ratio = "4" (1-20), anticheat.single_maker.share = "0.8" and
+      anticheat.coordinated.overlap = "0.8" (0.5-1), anticheat.product_watch_ratio = "0.9" and anticheat.product_alert_ratio = "0.7" (0.1-1,
+      watch must stay above alert)   (decimal STRINGS)
+    anticheat.disposable_domains = "mailinator.com,..."   (comma separated lowercase domains, 20 by default, at most 300 entries / 4000 characters; a write needs at least one entry)
+    retention.auth_events_days = 180
+    retention.vote_hashes_days = 90
+    retention.risk_signals_days = 365   (integer 30 to 3650, enforced by launchpad:purge-retention via PurgeRiskSignals: unreviewed signals, and the cap on reviewed ones)
+    retention.risk_signals_reviewed_days = 90 (integer 7 to 3650, enforced by PurgeRiskSignals: reviewed signals, counted from the review)
+    retention.rank_snapshots_days = 180  (integer 7 to 365, enforced by launchpad:purge-retention)
+    retention.audit_network_days = 365  (integer 30 to 3650, enforced by launchpad:purge-retention: empties audit_logs.ip_hash and user_agent)
+    digest.daily_send_at_utc = "07:00"   (HH:MM, 00:00 to 21:59 UTC; read through Settings::timeOfDay(), which falls back to the default for a stored value that is not HH:MM before 22:00; also the start of the launch-reminder window)
+    digest.weekly_send_at_utc = "07:00" (Mondays, same rule)
+    ranking.decay_exponent = "0.9"   (decimal STRING, 0.1 to 3, at most 3 decimals; read through Settings::decimal(), which falls back to the default for an out-of-range stored value)
+    ranking.early_bonus = "0.35"     (decimal STRING, 0 to 5, same shape)
+    community.comment_edit_minutes = 15  (integer 0 to 1440, read through Settings::integer(); 0 = comments can never be edited; enforced by EditComment)
+    community.report_open_cap = 20       (integer 1 to 200: open reports one member may have at a time; enforced by CreateReport, a soft brake)
+  The outbox numbers (batch 50, 50 s budget, 10 min lease, 9 attempts, breaker 5, backoff list) are constants in config/launchpad.php under 'outbox'.
+    retention.notifications_days = 90   (integer 7 to 365, enforced by launchpad:purge-retention: bell rows, read or not)
+    retention.email_messages_days = 90  (integer 30 to 365, enforced by launchpad:purge-retention: finished email_messages; digest_runs a day earlier; the effective age never drops below 72 h)
+    retention.exports_days = 7          (integer 1 to 30, enforced by launchpad:purge-retention via PurgeExports: how long a finished export stays downloadable)
+  Settings::integer() re-checks type and range on every read and serves the default (with a warning naming the key) for a stored value outside the range.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 1. Framework tables (Laravel / Sanctum defaults)
+//////////////////////////////////////////////////////////////
+
+Table sessions [headercolor: #64748B] {
+  id varchar(255) [pk]
+  user_id char(26) [ref: > users.id]
+  ip_address varchar(45)
+  user_agent text
+  payload text [not null]
+  last_activity integer [not null]
+
+  indexes {
+    user_id
+    last_activity
+  }
+
+  Note: 'Web (SPA) sessions — database driver so users can see / revoke devices.'
+}
+
+Table personal_access_tokens [headercolor: #64748B] {
+  id bigint [pk, increment]
+  tokenable_type varchar(255) [not null, note: 'polymorphic → users']
+  tokenable_id char(26) [not null]
+  name varchar(255) [not null, note: "device name, e.g. 'Amina’s iPhone'"]
+  token varchar(64) [not null, unique, note: 'SHA-256 of the token, plain text never stored']
+  abilities text
+  last_used_at timestamptz
+  expires_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (tokenable_type, tokenable_id)
+    expires_at
+  }
+
+  Note: 'Sanctum mobile-app tokens.'
+}
+
+Table password_reset_tokens [headercolor: #64748B] {
+  email varchar(255) [pk]
+  token varchar(255) [not null, note: 'hashed']
+  created_at timestamptz
+}
+
+Table jobs [headercolor: #64748B] {
+  id bigint [pk, increment]
+  queue varchar(255) [not null]
+  payload text [not null]
+  attempts smallint [not null]
+  reserved_at integer
+  available_at integer [not null]
+  created_at integer [not null]
+
+  indexes {
+    queue
+  }
+
+  Note: 'Database queue: jobs commit in the same transaction as the data that caused them.'
+}
+
+Table failed_jobs [headercolor: #64748B] {
+  id bigint [pk, increment]
+  uuid varchar(255) [not null, unique]
+  connection text [not null]
+  queue text [not null]
+  payload text [not null]
+  exception text [not null]
+  failed_at timestamptz [not null, default: `now()`]
+}
+
+//////////////////////////////////////////////////////////////
+// 2. Products + Review
+//////////////////////////////////////////////////////////////
+
+Table topics [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  slug varchar(40) [not null, unique]
+  name varchar(60) [not null]
+  emoji varchar(8)
+  description varchar(280)
+  position smallint [not null, default: 0]
+  created_at timestamptz
+  updated_at timestamptz
+
+  Note: 'Staff-managed fixed list (admins only). Founders pick up to 3 per product.'
+}
+
+Table products [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  maker_id char(26) [not null, ref: > users.id]
+  slug varchar(80) [not null, unique, note: 'public URL /p/{slug}. Always present (a draft needs name + slug). The UI prefills it from the name and the founder may edit it; the server never generates it, only validates: ^[a-z0-9]+(-[a-z0-9]+)*$, 3-80 chars, unique, not reserved. Editable only while draft / changes_requested (UI warns that changing it breaks existing links); no redirects.']
+  name varchar(60) [not null]
+  tagline varchar(80) [note: 'one-line pitch; nullable while draft']
+  description text [note: 'editable after launch']
+  website_url varchar(2048) [note: 'required main link (https); editable after launch']
+  logo_path varchar(255)
+  status product_status [not null, default: 'draft']
+  launch_date date [note: 'UTC day; goes live 00:00 UTC; changeable until launch; max per maker per day = settings.launch.max_per_maker_per_day (2)']
+  submitted_at timestamptz [note: 'last submit — review queue is ordered by this, oldest first']
+  approved_at timestamptz
+  launched_at timestamptz [note: 'set by scheduler at start of launch_date']
+  taken_down_at timestamptz
+  taken_down_by char(26) [ref: > users.id]
+  takedown_reason varchar(500)
+  votes_count integer [not null, default: 0, note: 'denormalised, counted votes only']
+  comments_count integer [not null, default: 0, note: 'denormalised: comments that are neither removed nor deleted (top level and replies; placeholders are not counted). CHECK products_comments_count_nonneg (comments_count >= 0). Changed only by relative updates under this product row lock, in the same transaction as the comment write']
+  hot_score double [not null, default: 0, note: 'live ranking score; RecomputeHotScores job runs every minute for today\'s live products only (order may lag ≤60s; vote counts are instant via WebSocket). FreezeDay writes the final score back when it freezes the day']
+  search_vector tsvector [note: "STORED GENERATED ALWAYS AS (setweight(to_tsvector('simple', launchpad_fold(name)), 'A') || setweight(to_tsvector('simple', launchpad_fold(coalesce(tagline, ''))), 'B') || setweight(to_tsvector('simple', launchpad_fold(left(coalesce(description, ''), 20000))), 'C')). No trigger, no job: PostgreSQL recomputes it when name, tagline or description is updated. Width: about 4 KB per product on average, and every Product read is select *, so it travels with every product query. Indexed by products_search_vector_gin"]
+  name_search text [note: 'STORED GENERATED ALWAYS AS (launchpad_fold(name)): the folded name used for typo matching (word_similarity) and the exact-name bonus. Indexed by products_name_search_trgm_gin']
+  created_at timestamptz
+  updated_at timestamptz
+  deleted_at timestamptz [note: 'soft delete — drafts only']
+
+  indexes {
+    (status, launch_date)
+    (launch_date, hot_score)
+    (votes_count desc, launch_date desc, id) [name: 'products_live_votes_launch_date_id_index', note: "PARTIAL: WHERE status = 'live' AND deleted_at IS NULL. Serves GET /leaderboards (votes first, then an optional launch-date window). Created by raw SQL: Blueprint cannot express DESC or WHERE"]
+    (maker_id, launch_date, id) [note: 'per-day cap lookup, keyset pagination']
+    (status, submitted_at, id) [note: 'review queue, oldest first']
+    (status, launched_at, id) [note: 'feed + newest sort, keyset pagination']
+    (maker_id, created_at, id) [note: 'GET /me/products']
+    (maker_id, launched_at, id) [note: 'GET /users/{handle}/products']
+    (updated_at desc, id desc) [name: 'products_staff_list_index', note: "PARTIAL: WHERE status <> 'draft' AND deleted_at IS NULL. The staff product list (GET /staff/products), latest change first, keyset. The query repeats the literal status <> 'draft' so the predicate is provable"]
+    (status, updated_at desc, id desc) [name: 'products_staff_status_index', note: 'PARTIAL: WHERE deleted_at IS NULL. The same list with a status filter']
+    search_vector [name: 'products_search_vector_gin', note: "GIN. PARTIAL: WHERE status = 'live' AND deleted_at IS NULL (the same predicate text as products_live_votes_launch_date_id_index, so a query that states it can use the index). Non-live text is never indexed. Created by raw SQL"]
+    name_search [name: 'products_name_search_trgm_gin', note: "GIN with gin_trgm_ops. PARTIAL: WHERE status = 'live' AND deleted_at IS NULL. Serves the typo arm (name_search %> folded query) for single-word queries of 3+ characters"]
+  }
+
+  Note: '''
+  Visibility rule: public only when status = live AND launch_date <= today (UTC).
+  Edit rules (enforced in actions / ProductPolicy):
+    draft, changes_requested   -> everything editable, including slug
+    pending                    -> locked (founder may withdraw back to draft)
+    approved, scheduled        -> locked except launch_date; to change anything else the founder
+                                  withdraws to draft (launch_date cleared) and resubmits
+    live                       -> only description, website_url, product_links; changes go live at once
+                                  and are logged in audit_logs ('product.edited_after_launch', meta before/after)
+    rejected, taken_down       -> read-only
+  Every public query goes through one Eloquent scope (Product::visible()).
+  Search (GET /search, sub-project 6) is Postgres only. Extensions unaccent and pg_trgm (trusted; created by migration
+  2026_10_21_000012 with IF NOT EXISTS; the production role must be allowed to create them). Functions, both CREATE OR REPLACE
+  because migrate:fresh keeps functions:
+    launchpad_fold(text) IMMUTABLE PARALLEL SAFE STRICT: btrim(regexp_replace(lower(unaccent('public.unaccent', normalize($1, NFKC))), '[\s!-/:-@\[-`{-~]+', ' ', 'g')).
+      IMMUTABLE on purpose (the dictionary is named, so the result cannot change) because only an immutable function may sit in a
+      generated column or an index. Changing it, or the unaccent rules, does NOT recompute stored values: rebuild both generated
+      columns and both indexes in one maintenance migration.
+    launchpad_prefix_tsquery(text) STABLE PARALLEL SAFE STRICT: query side only, never in an index. The typed last token as a
+      prefix tsquery built from plainto_tsquery(...):*, empty for an empty fold, so no input can raise a tsquery syntax error.
+  Migration 2026_10_21_000013 drops the old never-written plain search_vector and adds both generated columns in one ALTER TABLE
+  (ACCESS EXCLUSIVE, rewrites the table: maintenance window) and the two partial GIN indexes (plain CREATE INDEX blocks writes;
+  on a big table create them with CREATE INDEX CONCURRENTLY under the same names). Searchable text is name (A), tagline (B),
+  description (C) only: topic and maker names are not indexed (a generated column cannot read other tables).
+  Typo tolerance: word_similarity >= 0.5 (set per transaction through set_config) on single-word queries of 3+ characters only.
+  '''
+}
+
+Table product_topics [headercolor: #F97316] {
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  topic_id char(26) [not null, ref: > topics.id]
+
+  indexes {
+    (product_id, topic_id) [pk]
+    topic_id
+  }
+
+  Note: 'Max 3 topics per product (enforced in the action).'
+}
+
+Table product_links [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  kind link_kind [not null, note: 'any kind except website']
+  url varchar(2048) [not null, note: 'https only']
+  position smallint [not null]
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (product_id, position) [unique]
+    kind
+  }
+
+  Note: 'Optional extra links (max 5). website_url on products stays the required main link. Editable after launch.'
+}
+
+Table product_screenshots [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  path varchar(255) [not null]
+  position smallint [not null]
+  width integer
+  height integer
+  alt_text varchar(200)
+  created_at timestamptz
+
+  indexes {
+    (product_id, position) [unique]
+  }
+}
+
+Table product_reviews [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id]
+  reviewer_id char(26) [not null, ref: > users.id]
+  decision review_decision [not null]
+  note text [note: 'required for rejected / changes_requested; shown to the founder']
+  created_at timestamptz [not null]
+
+  indexes {
+    (product_id, created_at)
+  }
+
+  Note: 'Full history of review decisions (a product can bounce several times).'
+}
+
+Table featured_placements [headercolor: #F97316] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id]
+  starts_on date [not null]
+  ends_on date [not null]
+  created_by char(26) [not null, ref: > users.id]
+  created_at timestamptz
+
+  indexes {
+    (starts_on, ends_on)
+  }
+
+  Note: 'Staff-featured slots on the front page (paid slots later reuse this table).'
+}
+
+//////////////////////////////////////////////////////////////
+// 3. Voting + Ranking
+//////////////////////////////////////////////////////////////
+
+Table votes [headercolor: #22C55E] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [not null, ref: > users.id]
+  product_id char(26) [not null, ref: > products.id]
+  status vote_status [not null, default: 'counted']
+  voted_at timestamptz [not null, note: 'last time the vote was (re)cast']
+  removed_at timestamptz [note: 'null = active; set when the member takes the vote back']
+  toggle_count smallint [not null, default: 0, note: 'times un-voted / re-voted — anti-cheat signal']
+  ip_hash varchar(64) [note: 'anti-cheat signal (last cast)']
+  device_hash varchar(64) [note: 'anti-cheat signal (last cast)']
+  user_agent varchar(255)
+  voided_at timestamptz
+  voided_reason varchar(255)
+  created_at timestamptz [not null, note: 'first time this member voted on this product']
+  updated_at timestamptz
+
+  indexes {
+    (user_id, product_id) [unique, note: 'one vote per member per product — re-vote reuses the row']
+    (product_id, voted_at)
+    ip_hash
+    device_hash
+    product_id [name: 'votes_unpurged_signals_index', note: 'PARTIAL: WHERE ip_hash IS NOT NULL OR device_hash IS NOT NULL OR user_agent IS NOT NULL; lets the retention purge find old rows without scanning purged ones']
+  }
+
+  Note: '''
+  Soft removal: un-vote sets removed_at; re-vote clears it, bumps toggle_count, updates voted_at.
+  A vote counts only when removed_at IS NULL AND status IN (counted, flagged); voided never counts.
+  CHECK votes_voided_matches_status: (status = 'voided') = (voided_at IS NOT NULL).
+  FKs to users and products are plain (no cascade): a vote is history, voiding is a status, never a delete.
+  Own-product voting blocked in the action (maker_id <> user_id).
+  ip_hash / device_hash are keyed HMACs (64 chars), user_agent is truncated to 255 and NOT hashed.
+  Retention (built): launchpad:purge-retention sets all three to NULL (the columns are nullable, there is no CHECK on them)
+  when the product's launch_date is more than settings retention.vote_hashes_days (90) days before today UTC. The vote row,
+  status, counts and timestamps are untouched; nothing reads these columns after the vote is written.
+  '''
+}
+
+Table product_hourly_stats [headercolor: #22C55E] {
+  product_id char(26) [not null, ref: > products.id]
+  hour_start timestamptz [not null]
+  votes integer [not null, default: 0, note: 'net counted votes in this hour']
+  views integer [not null, default: 0, note: 'counted page views of the arrival hour: one per device per product per UTC day (deduped in Redis), not the maker, not staff, not bots, at most 25 devices per IP per product per day; flushed every minute by launchpad:flush-views as an additive upsert (APPROXIMATE: a minute may be counted twice if the batch drop fails after the commit, or lost on a Redis restart)']
+
+  indexes {
+    (product_id, hour_start) [pk]
+  }
+
+  Note: '''
+  Feeds the velocity ranking (3) and the votes/views-over-time charts (7).
+  CHECK product_hourly_stats_hour_start_on_the_hour: date_trunc('hour', hour_start, 'UTC') = hour_start.
+  votes is a net count (no CHECK on purpose: a negative sum can only come from a bug).
+  Vote: +1 on the bucket of voted_at, in the same transaction as the votes row.
+  Un-vote / void: -1 on the bucket of the original voted_at (so history stays honest).
+  hot_score = f(buckets) — formula lives in one PHP class (HotScore), tuned without schema changes.
+  Views are bucketed by their ARRIVAL hour. The flush inserts new buckets with votes = 0 and CastVote's upsert adds to existing ones (both
+  directions are pinned by a test). The flush locks the batch's product rows FOR KEY SHARE in id order before inserting any bucket (the
+  foreign key would otherwise deadlock with a vote that holds the product FOR UPDATE).
+  '''
+}
+
+Table daily_rankings [headercolor: #22C55E] {
+  launch_date date [not null]
+  product_id char(26) [not null, ref: > products.id]
+  rank smallint [not null]
+  votes_count integer [not null]
+  score double [not null]
+  frozen_at timestamptz [not null]
+
+  indexes {
+    (launch_date, product_id) [pk]
+    (launch_date, rank) [unique]
+  }
+
+  Note: '''
+  Written when the day ends (launchpad:freeze-day, 60 s after midnight UTC at the earliest). Past day pages read only
+  from here — the order of existing rows never changes. INSERT-ONLY: triggers daily_rankings_no_update,
+  daily_rankings_no_delete (row level) and daily_rankings_no_truncate (statement level) raise through
+  daily_rankings_immutable(). A product that goes live after its day was frozen is APPENDED with the next rank
+  (late arrival); a product taken down later keeps its row and is filtered out of reads by visible().
+  CHECK daily_rankings_rank_positive: rank >= 1. Ranks are therefore not always dense on a read (hidden products leave gaps).
+  '''
+}
+
+Table rank_snapshots [headercolor: #22C55E] {
+  product_id char(26) [not null, ref: > products.id]
+  captured_at timestamptz [not null]
+  rank smallint [not null]
+  score double [not null]
+
+  indexes {
+    (product_id, captured_at) [pk]
+    captured_at [name: 'rank_snapshots_captured_at_index', note: 'serves the retention purge; the pk leads with product_id']
+  }
+
+  Note: '''
+  Every 10 min during launch day (captured_at = the 10-minute mark, UTC) — powers "where it ranked" on the founder dashboard.
+  The founder dashboard timeline reads these marks of the LAUNCH day only; 180 days is the final lookback (after it timeline_available is false and best_rank is null, final_rank in daily_rankings stays).
+  Top 500 of today's list per mark (ranks above 500 are never stored); ON CONFLICT DO NOTHING makes a re-run a no-op;
+  skipped windows are permanent gaps; the 00:00 mark may be partial. CHECK rank_snapshots_rank_positive: rank >= 1.
+  Readers must apply visible() (a hidden product's old rows stay). No personal data. Purged by launchpad:purge-retention
+  after settings retention.rank_snapshots_days (180, 7 to 365; owner decision 2026-10-22, raised from 30;
+  see DECISIONS.md row 28).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 4. Community
+//////////////////////////////////////////////////////////////
+
+Table comments [headercolor: #A855F7] {
+  id char(26) [pk, note: 'ULID']
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade. Never changes after insert (trigger)']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK. Never changes after insert (trigger)']
+  parent_id char(26) [ref: > comments.id, note: 'null = top level; otherwise MUST be a top-level comment of the same product (trigger). Never changes after insert']
+  reply_to_user_id char(26) [ref: > users.id, note: 'who a reply answers (@-mention + notification); null for top level, and null when the answered author deleted their account']
+  body text [not null, note: 'plain text. The API accepts 1 to 1000 characters; the CHECK allows up to 2000 as a backstop. Wiped to an empty string when the author deletes the comment']
+  edited_at timestamptz [note: 'set by the author edit (precision 6); an unchanged body does not bump it']
+  removed_at timestamptz [note: 'removed by staff (precision 6); the body is KEPT for the staff view and never serialised publicly']
+  removed_by char(26) [ref: > users.id, note: 'staff member who removed it; set together with removed_at']
+  removed_reason varchar(255) [note: 'the staff note cut to 255 characters; the full note stays in reports.resolution_note']
+  replies_count integer [not null, default: 0, note: 'VISIBLE replies of a top-level comment (neither removed nor deleted); the Top sort needs it. Changed only by relative SET n = n + 1 under the product row lock. Stays on a deleted or removed top-level comment (its replies stay visible)']
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6 (microseconds): it sits in keyset cursors and the tie order. The Comment model has $timestamps = false, the actions and the factory set created_at and updated_at themselves']
+  updated_at timestamptz [note: 'precision 6']
+  deleted_at timestamptz [note: 'deleted by the author (precision 6). The row stays, the body is wiped; shown as a placeholder only while it still has visible replies']
+
+  indexes {
+    (product_id, replies_count desc, created_at desc, id desc) [name: 'comments_product_top_index', note: 'PARTIAL: WHERE parent_id IS NULL. sort=top keyset']
+    (product_id, created_at desc, id desc) [name: 'comments_product_newest_index', note: 'PARTIAL: WHERE parent_id IS NULL. sort=newest keyset']
+    (parent_id, created_at, id) [name: 'comments_parent_index', note: 'PARTIAL: WHERE parent_id IS NOT NULL. Replies, oldest first, keyset; also the window query that embeds the first 3 replies']
+    user_id [name: 'comments_user_index', note: 'the deleted-member job and the foreign-key lookups']
+    reply_to_user_id [name: 'comments_reply_to_user_index', note: 'PARTIAL: WHERE reply_to_user_id IS NOT NULL. Foreign-key lookups on user deletion']
+    removed_by [name: 'comments_removed_by_index', note: 'PARTIAL: WHERE removed_by IS NOT NULL. Foreign-key lookups']
+  }
+
+  Note: '''
+  One level of replies. Replying to a reply attaches to the same top-level parent and sets
+  reply_to_user_id (the author of the comment that was answered). Enforced in the action AND in the database:
+  trigger comments_reply_depth (function comments_enforce_reply_depth) fires BEFORE INSERT OR UPDATE OF
+  parent_id, product_id, user_id. On INSERT the parent must exist, have parent_id IS NULL and the same
+  product_id (SQLSTATE 23514); on UPDATE product_id, user_id and parent_id may not change (23514), so the
+  actions can read them without a lock.
+  CHECKs: comments_body_length (char_length(body) <= 2000), comments_body_present (deleted_at IS NOT NULL OR
+  char_length(body) >= 1), comments_reply_to_needs_parent (parent_id IS NOT NULL OR reply_to_user_id IS NULL),
+  comments_replies_count_nonneg (replies_count >= 0), comments_removed_pair ((removed_at IS NULL) = (removed_by IS NULL)).
+  Rows are never hard-deleted: a deletion is deleted_at + wiped body, a staff removal is removed_at/removed_by/removed_reason.
+  Counters: products.comments_count = comments that are neither removed nor deleted (top level and replies);
+  both counters change only by relative updates in the same transaction as the comment write, under the
+  PRODUCT row lock (one lock serialises every comment write of a product).
+  Ghost authors: a comment whose author deleted the account reads as deleted (anti-join on users.deleted_at)
+  but is still counted in both counters until the deleted-member job corrects them.
+  Lock order: product row -> comment rows (top-level parent first, then the reply) -> open report rows of the
+  target -> user rows (actor FOR SHARE).
+  '''
+}
+
+Table user_follows [headercolor: #A855F7] {
+  follower_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: DeleteAccount deletes the rows explicitly']
+  followed_id char(26) [not null, ref: > users.id]
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6: it sits in the keyset cursor of GET /me/follows/users']
+
+  indexes {
+    (follower_id, followed_id) [pk]
+    followed_id
+    (follower_id, created_at desc, followed_id desc) [name: 'user_follows_follower_created_index', note: 'GET /me/follows/users, newest follow first, keyset. Created by raw SQL: Blueprint cannot express DESC']
+  }
+
+  Note: '''
+  CHECK user_follows_not_self (follower_id <> followed_id).
+  No denormalised follower counters: followers_count / following_count are COUNT(*) on these indexed tables
+  (public on the profile). The LISTS are private: only GET /me/follows/users and /topics exist, there is no
+  follower list. DeleteAccount locks the member's follow rows first (ordered by follower_id, followed_id,
+  FOR UPDATE) and deletes them in both directions inside its transaction.
+  The following feed (GET /me/feed) is built at read time and NEVER cached (amends the earlier "cached per user
+  ~60s", DECISIONS 16/32): visible, launched products whose maker is followed OR that carry a followed topic,
+  never the member's own, ORDER BY launched_at DESC, id DESC, keyset. Two index-driven branches (followed makers
+  by LATERAL over products (maker_id, launched_at, id); followed topics) merged with UNION.
+  '''
+}
+
+Table topic_follows [headercolor: #A855F7] {
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK']
+  topic_id char(26) [not null, ref: > topics.id, note: 'plain FK, no cascade: DeleteTopic deletes the rows of an unused topic itself']
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
+
+  indexes {
+    (user_id, topic_id) [pk]
+    topic_id
+  }
+
+  Note: 'No CHECKs. Follow writes lock the topic row FOR SHARE, then the member row FOR SHARE (DeleteTopic locks the topic FOR UPDATE).'
+}
+
+Table reports [headercolor: #A855F7] {
+  id char(26) [pk, note: 'ULID']
+  reporter_id char(26) [not null, ref: > users.id]
+  reportable_type varchar(32) [not null, note: "polymorphic: 'product' | 'comment' (CHECK reports_type_check)"]
+  reportable_id char(26) [not null, note: 'NO foreign key (polymorphic): CreateReport validates the target']
+  reason report_reason [not null, note: 'varchar + CHECK: spam, abuse, misleading, inappropriate, other']
+  details varchar(1000) [note: 'required by the API when reason = other (validated, not a CHECK). Display text: staff-only, never in a member response']
+  status report_status [not null, default: 'open', note: 'varchar + CHECK: open, resolved, dismissed']
+  handled_by char(26) [ref: > users.id, note: 'null on a closed report = closed by the system (the target was deleted by its author or member); such reports count as resolved but not toward reporter reliability']
+  handled_at timestamptz [note: 'precision 6 (keyset order of the history list). Set exactly when status <> open']
+  resolution_note varchar(500) [note: "staff note, or 'deleted_by_author' for a system close"]
+  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
+  updated_at timestamptz [note: 'precision 6']
+
+  indexes {
+    (reporter_id, reportable_type, reportable_id) [unique, name: 'reports_open_unique', note: "PARTIAL: WHERE status = 'open'. One OPEN report per reporter per target (replaces the earlier full unique): a closed report never blocks a later one, the action refuses a re-report after a DISMISSED one (409 already_reviewed)"]
+    (status, created_at)
+    (reportable_type, reportable_id)
+    (handled_at desc, id desc) [name: 'reports_history_index', note: "PARTIAL: WHERE status <> 'open'. The staff history list, newest handled first, keyset. The query must use the same predicate (status <> 'open') for the planner to pick it"]
+    (reporter_id, status) [note: 'the open cap (count of a reporter open reports) and reporter reliability']
+  }
+
+  Note: '''
+  CHECKs: reports_type_check (reportable_type IN ('product','comment')), reports_open_matches_handled
+  ((status = 'open') = (handled_at IS NULL)), plus the enum CHECKs on reason and status.
+  Reports never hide content by themselves; content stays visible until a reviewer acts.
+  Member side (built): POST comments/{id}/report and products/{id}/report. 201 for a new report, 200 with the
+  same report when the member already has an OPEN one on the target (nothing written). Refused: own content
+  (403 own_content), an earlier dismissed report of this reporter on the target (409 already_reviewed), more open
+  reports than community.report_open_cap (409 report_limit). CreateReport serialises per reporter (reporter user
+  row FOR UPDATE, last in the lock order), so the cap is exact; a unique violation inside a savepoint is the
+  existing report. A comment deleted by its author closes its open reports as resolved with handled_by null.
+  Staff side (built): GET staff/reports (queue), /history, /{type}/{id} (detail), POST /{type}/{id}/resolve.
+  Queue = one row per target with an eligible open report (reporter verified, not suspended, not deleted). Order: open_reports
+  desc, score desc, oldest eligible open report asc, target id. open_reports and score ignore habitual false reporters
+  (>= 3 decided reports and reliability < 0.25: weight 0). Reliability is derived, never stored: (upheld + 1) / (decided + 2)
+  over the reporter's closed reports with handled_by NOT NULL (resolved = upheld); a system close (handled_by null) counts
+  for nothing. At most 100 rows: the top 70 by that order plus the 30 oldest remaining targets.
+  Resolve (remove_comment | take_down (admin) | dismiss) closes EVERY open report of the target together and changes the
+  target only if at least one open report was locked; with none it is a no-op (closed 0, no audit). An already removed or
+  deleted comment or taken-down product is left alone and its reports close as resolved.
+  Audit: comment.removed, report.resolved, report.dismissed (and the existing product.taken_down).
+  System closes (handled_by null): note 'deleted_by_author' (the author deleted the comment), 'account_deleted' (the
+  deleted-member job erased the comment), 'reporter_deleted' (status dismissed: a deleted reporter's report, closed by the
+  job only when the target has no other eligible open report).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 5. Notifications + Email
+//////////////////////////////////////////////////////////////
+
+Table notifications [headercolor: #EC4899] {
+  id uuid [pk, note: 'UUIDv7 written by RecordNotification (time-ordered)']
+  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE (a real FK replaces the polymorphic notifiable columns). Accounts are anonymised, never deleted: DeleteAccount removes the rows itself, the cascade covers a hard delete']
+  type varchar(40) [not null, note: 'CHECK notifications_type_valid: review_approved, review_rejected, review_changes_requested, launch_reminder, product_live, new_comment, export_ready. Digests are email only and have no bell type']
+  data jsonb [not null, note: "CHECK notifications_data_object (jsonb_typeof(data) = 'object'). Shape enforced by RecordNotification before any query: only the keys message_key (notifications.<type>), product_id, review_id, comment_id (string ids), params (an object of scalars, e.g. product_name, kind) and href (app-relative path starting with one slash). Never prose, a note, a comment body or an absolute URL. The client renders message_key and params as text"]
+  dedupe_key varchar(191) [not null, note: "idempotency: review:{review_id}, product_live:{product_id}:{launch_date}, comment:{comment_id}, launch_reminder:{product_id}:{launch_date}. The queued listener, a queue retry and the reconcile sweep derive the same key"]
+  read_at timestamptz [note: 'precision 6. CHECK notifications_read_after_created (read_at IS NULL OR read_at >= created_at); MarkNotificationsRead stamps GREATEST(now, created_at) so a faster clock cannot break it']
+  created_at timestamptz [not null, note: 'precision 6, in the keyset cursor. The Notification model has $timestamps = false; RecordNotification sets both stamps itself']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, dedupe_key) [unique, name: 'notifications_user_dedupe_unique', note: 'one bell row per member per event; INSERT ... ON CONFLICT DO NOTHING']
+    (user_id, created_at desc, id desc) [name: 'notifications_user_index', note: 'GET /me/notifications, keyset. Created by raw SQL: Blueprint cannot express DESC']
+    (user_id, created_at desc, id desc) [name: 'notifications_unread_index', note: 'PARTIAL: WHERE read_at IS NULL. The capped unread count (LIMIT 100) and the unread=1 list']
+    created_at [name: 'notifications_created_at_index', note: 'the retention purge (retention.notifications_days)']
+  }
+
+  Note: '''
+  In-site bell. NOT Laravel's database notification channel: User uses RoutesNotifications, not Notifiable, so no
+  notifications() relation can read this table by accident; actions query App\Models\Notification by user_id.
+  Written only by RecordNotification, in the same transaction as the outbox row (email_messages). The bell is never
+  gated by email preferences, and an unverified member is notified in-site too. A deleted or suspended recipient gets
+  nothing (the recipient row is read FOR SHARE, last in the lock order).
+  Unread count pushed live on the private channel user.{id} (event notification.count, payload {unread_count, notification_id}).
+  '''
+}
+
+Table email_preferences [headercolor: #EC4899] {
+  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE; DeleteAccount deletes the rows too']
+  type varchar(32) [not null, note: 'CHECK email_preferences_type_optional: only review_outcome, launch_reminder, product_live, new_comment, daily_top5, weekly_best, export_ready (EmailType::preferenceTypes()). verify_email / reset_password / email_change can never be stored, so never switched off']
+  enabled boolean [not null]
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, type) [pk]
+  }
+
+  Note: '''
+  Missing row = on. PATCH and the one-click unsubscribe upsert (INSERT ... ON CONFLICT (user_id, type) DO UPDATE);
+  turning a type back on writes enabled = true, the row is not deleted. Preferences gate EMAIL only.
+  Checked twice: when RecordNotification enqueues (saves a row) and again at SEND time inside SendEmailMessage,
+  where an opted-out row becomes suppressed (last_error = opted_out): off means we must not send.
+  export_ready is the seventh optional type (EmailType::preferenceTypes(), appended last); the CHECK was widened by migration 2026_10_21_000016.
+  '''
+}
+
+Table email_messages [headercolor: #EC4899] {
+  id char(26) [pk, note: 'ULID, lower-cased. Also the Message-ID header of the mail: <id@mail-domain>']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: accounts are anonymised, never hard-deleted; DeleteAccount scrubs the rows']
+  type email_type [not null, note: 'varchar(32) + CHECK email_messages_type_valid (all EmailType values). Outbox mail is the six optional types; the three auth mails use the queue, not this table']
+  idempotency_key varchar(191) [not null, unique, note: "e.g. review_outcome:{review_id}:{maker_id}, product_live:{product_id}:{launch_date}:{maker_id}, new_comment:{kind}:{product_id}:{yyyymmddHH}:{user_id} (the hour is the comment's created_at in UTC, never now()). INSERT ... ON CONFLICT DO NOTHING; unique index email_messages_idempotency_key_unique"]
+  to_email varchar(255) [not null, note: 'PERSONAL DATA: refreshed to the member current address at send time; purged with the row (retention.email_messages_days) and replaced by the anonymised address (deleted+<id>@invalid) on account deletion']
+  payload jsonb [not null, note: "CHECK email_messages_payload_object. Ids and small scalars only (strings up to 191 characters, ints, bools, null, or a list of id strings for digests), checked by RecordNotification: never an address, a body or a note. The mail re-reads names at send time"]
+  status email_status [not null, default: 'queued', note: 'varchar(16) + CHECK email_messages_status_valid']
+  attempts smallint [not null, default: 0, note: 'CHECK >= 0. Every claim increments it; a claim is identified by (id, attempts). suppress() and release() take the claim increment off again']
+  next_attempt_at timestamptz [note: "precision 6. The due time of a queued row and the lease end of a sending one; NULL once terminal. CHECK email_messages_due_state: (status IN ('queued','sending')) = (next_attempt_at IS NOT NULL)"]
+  last_error varchar(500) [note: 'class name + redacted, bounded message (addresses replaced by [email]), or a reason code: opted_out, user_deleted, user_suspended, email_unverified, user_missing, target_gone, lease_expired']
+  provider_message_id varchar(255) [note: "the Message-ID WE set (<id@domain>) as returned by the mailer, NOT a provider receipt"]
+  sent_at timestamptz [note: "precision 6. CHECK email_messages_sent_at_state: (status = 'sent') = (sent_at IS NOT NULL)"]
+  created_at timestamptz [not null, note: 'precision 6']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (next_attempt_at, id) [name: 'email_messages_due_index', note: "PARTIAL: WHERE status IN ('queued','sending'). The claim orders by (next_attempt_at, id) across both waiting states, so those are the key columns (a leading status would force a Sort of the whole due backlog); the predicate already restricts to the two waiting states. The WHERE of the claim repeats the predicate text"]
+    (user_id, type) [name: 'email_messages_user_type_index', note: 'the account scrub and suppression lookups']
+    created_at [name: 'email_messages_terminal_created_index', note: "PARTIAL: WHERE status IN ('sent','failed','suppressed'). The retention purge (never queued or sending rows); its WHERE repeats this predicate"]
+  }
+
+  Note: '''
+  Outbox. The row is written in the same transaction as the bell row (RecordNotification), so the mail survives a
+  provider outage and exists before the first attempt. launchpad:send-emails (every minute) claims up to 50 due rows
+  in one short transaction: SELECT ... ORDER BY next_attempt_at, id LIMIT n FOR UPDATE SKIP LOCKED inside a
+  MATERIALIZED CTE (so the LIMIT cannot be re-run), then UPDATE to status = sending, attempts + 1, next_attempt_at =
+  now + 10 min lease. The transaction commits BEFORE any send. SendEmailMessage then (1) locks the row, checks it is
+  still our claim (status sending AND the same attempts), applies the send-time rule (user exists, not deleted, not
+  suspended, verified e-mail, optional type not switched off, else suppressed with a reason code), refreshes to_email;
+  (2) renders and sends OUTSIDE any transaction; (3) locks again, confirms the claim, records the result.
+  States: queued -> sending -> sent | queued (retry) | failed | suppressed. failed is FINAL only (a permanent error or
+  attempts exhausted, including a lease-expired row already at its last attempt); a retryable failure goes back to queued.
+  Backoff after attempt n: 1m, 5m, 15m, 1h, 3h, 6h, 12h, 24h; 9 attempts then failed. Delivery is at least once (a crash
+  between the provider accepting and the record sends again after the lease, with the same Message-ID).
+  Permanent: RfcComplianceException, UnrenderableMail, an HTTP transport 4xx other than 408/429, or an SMTP
+  TransportException whose code is 500-599 (a hard bounce). 4xx, code 0 and everything else is transient.
+  A circuit breaker stops a run after 5 consecutive transient failures; unsent claims are released (queued, due now,
+  attempts - 1).
+  Account deletion (DeleteAccount): every row of the member gets to_email = the anonymised address and last_error NULL;
+  queued/sending rows also become suppressed (next_attempt_at NULL, payload '{}', last_error user_deleted). A row in flight
+  can still be delivered once to the old address (at least once).
+  launchpad:requeue-failed-emails (manual, not scheduled) puts failed rows back. A purged sent row frees its
+  idempotency key, so the retention window for email_messages must stay longer than the 48 h reconcile window plus a day.
+  '''
+}
+
+Table digest_runs [headercolor: #EC4899] {
+  kind varchar(16) [not null, note: 'CHECK digest_runs_kind_valid: daily_top5 | weekly_best']
+  period_date date [not null, note: 'the covered UTC day (daily) or the Monday of the covered week (weekly)']
+  product_ids jsonb [not null, note: "CHECK digest_runs_product_ids_valid: a JSON array of at most 5 product ids, chosen ONCE so every member gets the same list and a resumed run keeps it"]
+  last_user_id char(26) [note: 'resume cursor: the last user id fully processed; the next chunk continues after it']
+  enqueued integer [not null, default: 0, note: 'CHECK enqueued >= 0. Outbox rows inserted so far']
+  started_at timestamptz [not null, note: 'precision 6. A run younger than 18 h is resumed by the next tick (even past midnight), an older one is abandoned']
+  completed_at timestamptz [note: 'precision 6. NULL while the run is open. Also set when a run is ABANDONED (too old to resume), so completed_at set with enqueued below the eligible-member count means abandoned']
+
+  indexes {
+    (kind, period_date) [pk]
+    period_date [name: 'digest_runs_period_date_index', note: 'the retention purge deletes by period_date alone (the primary key leads with kind)']
+  }
+
+  Note: '''
+  Resumable digest queueing (launchpad:queue-digests, every 10 minutes). Chunks of 500 recipients, each chunk ONE
+  transaction: digest_runs row FOR UPDATE, then users FOR SHARE in id order (verified, not suspended, not deleted, not opted
+  out), INSERT INTO email_messages ... ON CONFLICT DO NOTHING (key {kind}:{period}:{user_id}), cursor update. An empty or
+  not-yet-frozen day makes no row until 23:00 UTC, then a run closed with enqueued = 0. No in-site notification is written
+  for a digest. Purged with retention.email_messages_days, measured from the UTC midnight (about a day before the mail rows).
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 7. Founder dashboard + Export
+//////////////////////////////////////////////////////////////
+
+Table product_referrers_daily [headercolor: #14B8A6] {
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade']
+  day date [not null, note: 'the UTC day of the counted view']
+  source varchar(255) [not null, note: "a source key: 'direct', 'launchpad' (the site's own hosts), an allowlist key from config/referrers.php (google, bing, x, facebook, ...), a valid public host (max 80 chars, with a dot, alphabetic or punycode last label, never an IP) or 'other'. Never a path, query, credential or port. At most 50 distinct sources per product per day; the rest fold into 'other' at flush time. The category (search, social, internal, direct, other) is derived from the config, never stored"]
+  visits integer [not null, default: 0, note: 'CHECK product_referrers_daily_visits_nonneg (visits >= 0). Added to by the flush, never replaced']
+
+  indexes {
+    (product_id, day, source) [pk, note: 'serves every dashboard read (a prefix range) and the flush upsert']
+  }
+
+  Note: '''
+  "Where visitors came from" for the founder dashboard. Views over time live in product_hourly_stats.
+  No raw view rows and no person: a view is deduped in Redis (one per device per product per UTC day, device = HMAC of
+  the lp_did cookie or X-Device-Id; a per-IP cap of 25 devices per product per day, IPv6 reduced to /64) and
+  flushed here and to product_hourly_stats.views every minute in ONE transaction, so per product and day
+  sum(visits) = sum(views) of the day's hourly buckets (counters are approximate, see product_hourly_stats).
+  Redis keys (the `views` database, REDIS_VIEWS_DB): view:{product}:{Ymd}:{device}, viewip:{product}:{Ymd}:{ip},
+  views:pending, views:seq, views:batches, views:flushing:{n}, views:claim:{n}. They hold HMACs and counts only
+  and expire after 25 hours.
+  '''
+}
+
+Table exports [headercolor: #14B8A6] {
+  id char(26) [pk, note: 'ULID. Part of the authenticated download path; never a signed URL']
+  user_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: the maker. DeleteAccount deletes the rows']
+  product_id char(26) [not null, ref: > products.id, note: 'plain FK, no cascade']
+  status varchar(16) [not null, default: 'queued', note: 'CHECK exports_status_valid: queued, processing, ready, failed, expired']
+  file_path varchar(255) [note: "key on the private `exports` disk: {product_id}/{export_id}.zip. Never sent to a client. Set when ready, cleared (NULL) once the file is really deleted, so a failed delete keeps the path for the purge to retry"]
+  file_size integer [note: 'bytes of the zip. CHECK exports_file_size_range: 0 to 5242880 (5 MB)']
+  row_counts jsonb [note: 'when ready: {summary, hourly, referrers_daily, rank_timeline} row counts of the four CSV files']
+  error varchar(32) [note: "short code only: generation_failed, too_large, stalled; never exception text. CHECK exports_error_only_when_failed (error IS NULL OR status = 'failed')"]
+  completed_at timestamptz [note: 'precision 6']
+  expires_at timestamptz [note: 'precision 6. Set when the export becomes ready to completed_at + retention.exports_days (default 7); a later change of the setting does not move it. A ready export also expires at once when a newer one replaces it']
+  created_at timestamptz [not null, note: 'precision 6']
+  updated_at timestamptz [not null, note: 'precision 6']
+
+  indexes {
+    (user_id, created_at) [name: 'exports_user_id_created_at_index']
+    product_id [unique, name: 'exports_one_active_per_product', note: "PARTIAL UNIQUE: WHERE status IN ('queued','processing','ready'). At most one export per product in flight or downloadable; RequestExport's lookups repeat this predicate. Created by raw SQL"]
+    (status, expires_at) [name: 'exports_status_expires_at_index', note: 'the purge and the sweeper']
+    (product_id, created_at desc, id desc) [name: 'exports_product_created_index', note: "the maker's list: latest five of a product, newest first"]
+  }
+
+  Note: '''
+  CHECK exports_ready_has_file: status <> 'ready' OR (file_path, file_size, completed_at, expires_at, row_counts are all NOT NULL).
+  A dashboard export: a zip of four CSV files (summary.csv, hourly.csv, referrers_daily.csv, rank_timeline.csv), built by the
+  queued GenerateExport job from the dashboard's own Actions in one REPEATABLE READ snapshot, written to the private disk and
+  streamed only through the authenticated download (GET me/products/{id}/exports/{export}/download; 409 export_not_ready,
+  410 export_expired). No staff export. States: queued -> processing -> ready | failed (too_large, generation_failed, stalled);
+  a replaced, past-expiry or deleted-owner export is expired. launchpad:sweep-exports (every 5 minutes) re-dispatches a queued row
+  older than 10 minutes and fails a stalled processing row. PurgeExports (launchpad:purge-retention) expires ready rows past
+  expires_at or of a deleted member, deletes the zips AFTER the chunk commits, and deletes failed/expired rows without a file
+  30 days after their last change. DeleteAccount deletes the member's rows in its transaction (leaves of the lock order) and the
+  zips after the commit. Migration 2026_10_21_000016 widened the CHECKs of notifications.type and email_preferences.type for export_ready.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// 8. Anti-cheat
+//////////////////////////////////////////////////////////////
+
+Table auth_events [headercolor: #EF4444] {
+  id char(26) [pk, note: 'ULID']
+  user_id char(26) [ref: > users.id, note: 'null for failed logins on unknown emails']
+  event auth_event_type [not null]
+  ip_hash varchar(64)
+  device_hash varchar(64)
+  user_agent varchar(255)
+  created_at timestamptz [not null]
+
+  indexes {
+    (user_id, created_at)
+    ip_hash
+    device_hash
+  }
+
+  Note: 'Deleted by launchpad:purge-retention after settings.retention.auth_events_days (180); no trigger guards this table and no FK points at it. Security log + raw material for "one person, ten logins". Written from sub-project 1 onward.'
+}
+
+Table risk_signals [headercolor: #EF4444] {
+  id char(26) [pk, note: 'ULID']
+  kind varchar(24) [not null, note: 'CHECK risk_signals_kind_check: the eight risk_signal_kind values']
+  user_id char(26) [ref: > users.id, note: 'plain FK, no cascade (a signal is history). NULL for a product-level signal (the product form of vote_burst)']
+  product_id char(26) [ref: > products.id, note: 'plain FK, no cascade. NULL for a member-level signal']
+  weight smallint [not null, note: 'CHECK risk_signals_weight_range 0 to 100. Frozen at detection (after any discount); a later setting change never rewrites it. 0 for the product burst form']
+  details jsonb [not null, default: '{}', note: 'evidence: ids and counts only (user_ids, vote_ids, observed, threshold, window), never a hash, an address or an e-mail']
+  dedupe_key varchar(160) [not null, unique, note: 'one signal per finding: INSERT ... ON CONFLICT (dedupe_key) DO NOTHING, so a rerun costs nothing and an existing row (even a reviewed one) is never touched. Once-per-account kinds (fresh_account, disposable_email) and single_maker_voter have no date in the key; vote_burst:user, login_churn and coordinated_votes carry the UTC date of the run; vote_burst:product the hour']
+  detected_at timestamptz [not null, note: 'precision 0 (whole seconds)']
+  reviewed_by char(26) [ref: > users.id]
+  reviewed_at timestamptz [note: 'precision 0']
+  outcome varchar(20) [note: "'confirmed' | 'dismissed' (CHECK risk_signals_outcome_check)"]
+  review_note varchar(255)
+
+  indexes {
+    (weight desc, detected_at desc, id desc) [name: 'risk_signals_open_queue_index', note: 'PARTIAL: WHERE reviewed_at IS NULL. The open queue, worst first']
+    detected_at [name: 'risk_signals_unreviewed_detected_index', note: 'PARTIAL: WHERE reviewed_at IS NULL. The retention purge and the coordinated-votes candidates']
+    (reviewed_at desc, id desc) [name: 'risk_signals_reviewed_index', note: 'PARTIAL: WHERE reviewed_at IS NOT NULL. The recently-reviewed list and the purge of reviewed rows']
+    (detected_at desc, id desc) [name: 'risk_signals_detected_index', note: 'the all-signals list, newest first']
+    (user_id, detected_at)
+    (product_id, detected_at)
+  }
+
+  Note: '''
+  CHECKs: risk_signals_subject_present (user_id IS NOT NULL OR product_id IS NOT NULL) and risk_signals_review_complete
+  ((reviewed_by IS NULL) = (reviewed_at IS NULL) AND (reviewed_at IS NULL) = (outcome IS NULL)), plus the kind, outcome and weight checks.
+  Written only by launchpad:detect-abuse (every 5 minutes) through SignalWriter, which locks the referenced products and then users
+  FOR KEY SHARE in id order before inserting. Reviewed by staff (confirmed counts its full weight for ever, dismissed counts 0, open
+  decays linearly over anticheat.decay_days). Retention (PurgeRiskSignals): unreviewed after retention.risk_signals_days (365);
+  reviewed after retention.risk_signals_reviewed_days (90) from the review or at most 365 days from detection; reviewed
+  fresh_account / disposable_email / single_maker_voter rows are kept for ever so detection cannot resurrect them.
+  Staff never see a hash: votes expose 8-hex fingerprints, null once PurgeVoteHashes emptied the vote.
+  '''
+}
+
+//////////////////////////////////////////////////////////////
+// Groups (dbdiagram draws a box around each)
+//////////////////////////////////////////////////////////////
+
+TableGroup accounts_1 {
+  users
+  user_links
+  settings
+  social_accounts
+  audit_logs
+  sessions
+  personal_access_tokens
+  password_reset_tokens
+  jobs
+  failed_jobs
+}
+
+TableGroup products_2 {
+  topics
+  products
+  product_topics
+  product_links
+  product_screenshots
+  product_reviews
+  featured_placements
+}
+
+TableGroup voting_3 {
+  votes
+  product_hourly_stats
+  daily_rankings
+  rank_snapshots
+}
+
+TableGroup community_4 {
+  comments
+  user_follows
+  topic_follows
+  reports
+}
+
+TableGroup notifications_5 {
+  notifications
+  email_preferences
+  email_messages
+}
+
+TableGroup dashboard_7 {
+  product_referrers_daily
+  exports
+}
+
+TableGroup anticheat_8 {
+  auth_events
+  risk_signals
+}
+</script>
+
+<script>
+// ---------------------------------------------------------------------------
+// DBML parser (subset used by dbdiagram.io: Project, Table, Enum, TableGroup, Ref)
+// ---------------------------------------------------------------------------
+(function (global) {
+  'use strict';
+
+  const QUOTES = ["'", '"', '`'];
+
+  function stripComments(src) {
+    let out = '', q = null;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (q) {
+        out += c;
+        if (q === "'''") { if (src.startsWith("'''", i)) { out += "''"; i += 2; q = null; } }
+        else if (c === '\\') { out += src[++i] ?? ''; }
+        else if (c === q) q = null;
+        continue;
+      }
+      if (src.startsWith("'''", i)) { q = "'''"; out += "'''"; i += 2; continue; }
+      if (QUOTES.includes(c)) { q = c; out += c; continue; }
+      if (src.startsWith('//', i)) { while (i < src.length && src[i] !== '\n') i++; out += '\n'; continue; }
+      if (src.startsWith('/*', i)) {
+        const end = src.indexOf('*/', i + 2);
+        const chunk = src.slice(i, end < 0 ? src.length : end + 2);
+        out += chunk.replace(/[^\n]/g, '');
+        i += chunk.length - 1;
+        continue;
+      }
+      out += c;
+    }
+    return out;
+  }
+
+  // Splits on `sep` / newlines while respecting quotes, (), [] and {}.
+  function scan(s, isBreak) {
+    const out = [];
+    let cur = '', q = null, depth = 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (q) {
+        cur += c;
+        if (q === "'''") { if (s.startsWith("'''", i)) { cur += "''"; i += 2; q = null; } }
+        else if (c === '\\') { cur += s[++i] ?? ''; }
+        else if (c === q) q = null;
+        continue;
+      }
+      if (s.startsWith("'''", i)) { q = "'''"; cur += "'''"; i += 2; continue; }
+      if (QUOTES.includes(c)) { q = c; cur += c; continue; }
+      if ('([{'.includes(c)) depth++;
+      else if (')]}'.includes(c)) depth--;
+      if (depth <= 0 && isBreak(c)) { if (cur.trim()) out.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+  const statements = body => scan(body, c => c === '\n');
+  const splitList = s => scan(s, c => c === ',');
+
+  function dedent(s) {
+    const lines = s.replace(/^[ \t]*\n/, '').replace(/\n[ \t]*$/, '').split('\n');
+    const widths = lines.filter(l => l.trim()).map(l => l.match(/^[ \t]*/)[0].length);
+    const ind = widths.length ? Math.min(...widths) : 0;
+    return lines.map(l => l.slice(ind)).join('\n');
+  }
+
+  function unquote(v) {
+    v = String(v ?? '').trim();
+    if (v.length >= 6 && v.startsWith("'''") && v.endsWith("'''")) return dedent(v.slice(3, -3));
+    const c = v[0];
+    if (v.length >= 2 && QUOTES.includes(c) && v.endsWith(c)) return v.slice(1, -1).replace(/\\(.)/g, '$1');
+    return v;
+  }
+
+  function parseRefTarget(v) {
+    const m = v.trim().match(/^(<>|>|<|-)\s*("[^"]+"|[\w.]+)\.("[^"]+"|\w+)$/);
+    return m ? { op: m[1], table: unquote(m[2]), column: unquote(m[3]) } : null;
+  }
+
+  function parseSettings(str) {
+    const s = { flags: [], refs: [] };
+    if (!str) return s;
+    for (const part of splitList(str)) {
+      const kv = part.match(/^([a-zA-Z_][a-zA-Z_ ]*?)\s*:\s*([\s\S]*)$/);
+      if (kv) {
+        const k = kv[1].trim().toLowerCase(), v = kv[2].trim();
+        if (k === 'note') s.note = unquote(v);
+        else if (k === 'default') s.default = { value: unquote(v), expr: v.startsWith('`') };
+        else if (k === 'ref') { const r = parseRefTarget(v); if (r) s.refs.push(r); }
+        else s[k] = unquote(v);
+        continue;
+      }
+      const f = part.trim().toLowerCase();
+      if (f === 'pk' || f === 'primary key') s.pk = true;
+      else if (f === 'increment') s.increment = true;
+      else if (f === 'not null') s.notNull = true;
+      else if (f === 'null') s.nullable = true;
+      else if (f === 'unique') s.unique = true;
+      else s.flags.push(part.trim());
+    }
+    return s;
+  }
+
+  const COL_RE = /^("[^"]+"|[^\s\[]+)\s+("[^"]+"|[^\s\[(]+(?:\s*\([^)]*\))?)\s*(?:\[([\s\S]*)\])?\s*$/;
+  const IDX_RE = /^(\([^)]*\)|`[^`]*`|"[^"]+"|[^\s\[]+)\s*(?:\[([\s\S]*)\])?$/;
+
+  function parseIndex(st) {
+    const m = st.match(IDX_RE);
+    if (!m) return null;
+    const cols = m[1].startsWith('(') ? splitList(m[1].slice(1, -1)).map(unquote) : [unquote(m[1])];
+    return { columns: cols, settings: parseSettings(m[2]) };
+  }
+
+  function parseTable(name, alias, settings, body, warnings) {
+    const t = { name, alias, settings, note: settings.note || '', columns: [], indexes: [] };
+    for (const st of statements(body)) {
+      let m;
+      if ((m = st.match(/^indexes\s*\{([\s\S]*)\}$/i))) {
+        for (const ix of statements(m[1])) { const p = parseIndex(ix); if (p) t.indexes.push(p); else warnings.push(`${name}: cannot parse index "${ix}"`); }
+      } else if ((m = st.match(/^note\s*:\s*([\s\S]+)$/i))) {
+        t.note = unquote(m[1]);
+      } else if ((m = st.match(/^note\s*\{([\s\S]*)\}$/i))) {
+        t.note = unquote(m[1].trim());
+      } else if ((m = st.match(COL_RE))) {
+        t.columns.push({ name: unquote(m[1]), type: unquote(m[2]), settings: parseSettings(m[3]), pos: t.columns.length + 1 });
+      } else {
+        warnings.push(`${name}: cannot parse "${st.split('\n')[0]}"`);
+      }
+    }
+    return t;
+  }
+
+  const REF_LINE = /^("[^"]+"|[\w.]+)\.("[^"]+"|\w+)\s*(<>|>|<|-)\s*("[^"]+"|[\w.]+)\.("[^"]+"|\w+)\s*(?:\[([\s\S]*)\])?$/;
+  function addRefLine(db, line) {
+    const m = line.trim().match(REF_LINE);
+    if (!m) { db.warnings.push(`cannot parse Ref "${line}"`); return; }
+    const settings = parseSettings(m[6]);
+    db.refs.push({
+      from: { table: unquote(m[1]), column: unquote(m[2]) }, op: m[3],
+      to: { table: unquote(m[4]), column: unquote(m[5]) },
+      onDelete: settings.delete || '', note: settings.note || '',
+    });
+  }
+
+  const lineOf = (src, i) => src.slice(0, i).split('\n').length;
+
+  function parse(raw) {
+    raw = String(raw).replace(/\r\n?/g, '\n');
+    const db = { project: null, tables: [], enums: [], groups: [], refs: [], warnings: [], legend: [], about: '' };
+
+    // Legend lines like:  //   blue    #3B82F6  1. Foundation + Accounts
+    for (const m of raw.matchAll(/^\s*\/\/\s*[\w-]+\s+(#[0-9a-f]{6})\s+(.+)$/gim)) {
+      db.legend.push({ color: m[1].toUpperCase(), label: m[2].trim() });
+    }
+    // Leading comment block = schema notes.
+    const lead = [];
+    for (const line of raw.split('\n')) { if (/^\s*\/\//.test(line)) lead.push(line.replace(/^\s*\/\/ ?/, '')); else if (line.trim() || lead.length) break; }
+    db.about = lead.join('\n').trim();
+
+    const src = stripComments(raw);
+    let i = 0;
+    while (i < src.length) {
+      const ws = /\s*/y; ws.lastIndex = i; ws.test(src); i = ws.lastIndex;
+      if (i >= src.length) break;
+      const rest = src.slice(i);
+      let m = rest.match(/^Ref\b[^:{\n]*:\s*([^\n]+)/i);
+      if (m) { addRefLine(db, m[1]); i += m[0].length; continue; }
+      m = rest.match(/^(\w+)\b([^{\n]*)\{/);
+      if (!m) throw new Error(`Unexpected input at line ${lineOf(src, i)}: "${rest.split('\n')[0].slice(0, 80)}"`);
+      const open = i + m[0].length - 1;
+      const close = open + matchBrace(src.slice(open));
+      if (close < open) throw new Error(`Unclosed block "${m[1]} ${m[2].trim()}" at line ${lineOf(src, i)}`);
+      handleBlock(db, m[1].toLowerCase(), m[2].trim(), src.slice(open + 1, close));
+      i = close + 1;
+    }
+    link(db);
+    return db;
+  }
+
+  function matchBrace(s) {
+    let depth = 0, q = null;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (q) {
+        if (q === "'''") { if (s.startsWith("'''", i)) { i += 2; q = null; } }
+        else if (c === '\\') i++;
+        else if (c === q) q = null;
+        continue;
+      }
+      if (s.startsWith("'''", i)) { q = "'''"; i += 2; continue; }
+      if (QUOTES.includes(c)) { q = c; continue; }
+      if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) return i;
+    }
+    return -1;
+  }
+
+  function handleBlock(db, kind, header, body) {
+    const hm = header.match(/^("[^"]+"|[\w.]+)?(?:\s+as\s+(\w+))?\s*(?:\[([\s\S]*)\])?/i) || [];
+    const name = unquote(hm[1] || '');
+    const settings = parseSettings(hm[3]);
+    switch (kind) {
+      case 'project': {
+        const p = { name };
+        for (const st of statements(body)) { const kv = st.match(/^(\w+)\s*:\s*([\s\S]+)$/); if (kv) p[kv[1].toLowerCase()] = unquote(kv[2]); }
+        db.project = p;
+        break;
+      }
+      case 'table': db.tables.push(parseTable(name, hm[2] || '', settings, body, db.warnings)); break;
+      case 'enum':
+        db.enums.push({
+          name,
+          values: statements(body).map(st => {
+            const m = st.match(/^("[^"]+"|[^\s\[]+)\s*(?:\[([\s\S]*)\])?$/);
+            return m ? { name: unquote(m[1]), note: parseSettings(m[2]).note || '' } : { name: st, note: '' };
+          }),
+        });
+        break;
+      case 'tablegroup':
+        db.groups.push({ name, settings, tables: statements(body).filter(s => !/^note\s*[:{]/i.test(s)).map(unquote) });
+        break;
+      case 'ref': statements(body).forEach(l => addRefLine(db, l)); break;
+      default: db.warnings.push(`ignored block "${kind} ${header}"`);
+    }
+  }
+
+  const safeColor = c => (/^#[0-9a-f]{3,8}$/i.test(c || '') ? c.toUpperCase() : '#64748B');
+
+  function prettyGroup(name) {
+    const m = name.match(/^(.*?)[_-](\d+)$/);
+    const words = (m ? m[1] : name).replace(/[_-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+    return m ? `${m[2]} · ${words}` : words;
+  }
+
+  function link(db) {
+    db.tableMap = new Map();
+    for (const t of db.tables) { db.tableMap.set(t.name, t); if (t.alias) db.tableMap.set(t.alias, t); }
+    db.enumMap = new Map(db.enums.map(e => [e.name, e]));
+    const legendByColor = new Map(db.legend.map(l => [l.color, l.label]));
+
+    // Inline refs become first-class relationships.
+    for (const t of db.tables) {
+      for (const c of t.columns) {
+        for (const r of c.settings.refs) {
+          const onDelete = (c.settings.note || '').match(/on delete (cascade|set null|set default|restrict|no action)/i);
+          db.refs.push({ from: { table: t.name, column: c.name }, op: r.op, to: { table: r.table, column: r.column }, onDelete: onDelete ? onDelete[1].toLowerCase() : '', note: c.settings.note || '' });
+        }
+      }
+    }
+    for (const r of db.refs) {
+      for (const end of [r.from, r.to]) {
+        const t = db.tableMap.get(end.table);
+        if (!t) db.warnings.push(`ref to unknown table "${end.table}"`);
+        else { end.table = t.name; if (!t.columns.some(c => c.name === end.column)) db.warnings.push(`ref to unknown column "${t.name}.${end.column}"`); }
+      }
+    }
+
+    for (const t of db.tables) {
+      t.color = safeColor(t.settings.headercolor);
+      t.legend = legendByColor.get(t.color) || '';
+      t.pkCols = new Set(t.columns.filter(c => c.settings.pk).map(c => c.name));
+      t.uniqueCols = new Set(t.columns.filter(c => c.settings.unique).map(c => c.name));
+      t.indexedCols = new Map();
+      for (const ix of t.indexes) {
+        if (ix.settings.pk) ix.columns.forEach(n => t.pkCols.add(n));
+        if (ix.settings.unique && ix.columns.length === 1) t.uniqueCols.add(ix.columns[0]);
+        for (const n of ix.columns) {
+          if (!t.indexedCols.has(n)) t.indexedCols.set(n, []);
+          t.indexedCols.get(n).push(`(${ix.columns.join(', ')})${ix.settings.unique ? ' unique' : ''}${ix.settings.pk ? ' pk' : ''}`);
+        }
+      }
+      t.outgoing = db.refs.filter(r => r.from.table === t.name);
+      t.incoming = db.refs.filter(r => r.to.table === t.name);
+      t.fkCols = new Map();
+      for (const r of t.outgoing) { if (!t.fkCols.has(r.from.column)) t.fkCols.set(r.from.column, []); t.fkCols.get(r.from.column).push(r); }
+      t.group = '';
+    }
+
+    db.groupList = db.groups.map(g => {
+      const tables = g.tables.map(n => db.tableMap.get(n)).filter(Boolean);
+      tables.forEach(t => { t.group = g.name; });
+      return { name: g.name, label: prettyGroup(g.name), color: safeColor(g.settings.color || tables[0]?.color), tables };
+    });
+    const ungrouped = db.tables.filter(t => !t.group);
+    if (ungrouped.length) {
+      ungrouped.forEach(t => { t.group = '(ungrouped)'; });
+      db.groupList.push({ name: '(ungrouped)', label: db.groups.length ? 'Ungrouped' : 'All tables', color: '#94A3B8', tables: ungrouped });
+    }
+
+    for (const e of db.enums) {
+      e.usedBy = [];
+      for (const t of db.tables) for (const c of t.columns) {
+        if (c.type === e.name || c.type.endsWith('.' + e.name)) { c.enum = e.name; e.usedBy.push({ table: t.name, column: c.name }); }
+      }
+    }
+    db.columnCount = db.tables.reduce((n, t) => n + t.columns.length, 0);
+    db.indexCount = db.tables.reduce((n, t) => n + t.indexes.length, 0);
+  }
+
+  global.DBML = { parse };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script>
+// ---------------------------------------------------------------------------
+// Viewer
+// ---------------------------------------------------------------------------
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC[c]);
+  const PREFS_KEY = 'dbml-preview:prefs:v2';
+  const CARDINALITY = { '>': 'many → one', '<': 'one → many', '-': 'one → one', '<>': 'many ↔ many' };
+
+  const state = {
+    db: null, source: '', q: '', view: 'diagram', order: 'schema', showNotes: true, showIndexes: true, showSidebar: true,
+    hiddenGroups: new Set(), collapsed: new Set(), relSort: { key: 'from', dir: 1 },
+  };
+  const PREF_KEYS = ['view', 'order', 'showNotes', 'showIndexes', 'showSidebar'];
+  try { const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); PREF_KEYS.forEach(k => { if (k in p) state[k] = p[k]; }); } catch {}
+  const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(Object.fromEntries(PREF_KEYS.map(k => [k, state[k]])))); } catch {} };
+
+  function hl(text) {
+    text = String(text ?? '');
+    if (!state.q) return esc(text);
+    const re = new RegExp(state.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let out = '', last = 0;
+    for (const m of text.matchAll(re)) { out += esc(text.slice(last, m.index)) + '<mark>' + esc(m[0]) + '</mark>'; last = m.index + m[0].length; }
+    return out + esc(text.slice(last));
+  }
+  const has = (s, q) => String(s || '').toLowerCase().includes(q);
+
+  function matchTable(t) {
+    const q = state.q;
+    if (!q) return { show: true, rows: new Set() };
+    const rows = new Set(t.columns.filter(c => has(c.name, q) || has(c.type, q) || has(c.settings.note, q) || c.settings.refs.some(r => has(r.table, q))).map(c => c.name));
+    const show = has(t.name, q) || has(t.note, q) || has(t.legend, q) || rows.size > 0 || t.indexes.some(ix => has(ix.settings.note, q));
+    return { show, rows };
+  }
+  const visibleTables = () => state.db.tables.filter(t => !state.hiddenGroups.has(t.group)).map(t => ({ t, m: matchTable(t) })).filter(x => x.m.show);
+
+  // ---- header & sidebar ---------------------------------------------------
+  function renderHeader() {
+    const db = state.db, p = db.project || {};
+    $('#title').textContent = p.name ? `${p.name} — database schema` : 'Database schema';
+    document.title = $('#title').textContent;
+    $('#subtitle').textContent = p.note || '';
+    $('#source').textContent = `Source: ${state.source}`;
+    const stats = [
+      [db.tables.length, 'tables'], [db.columnCount, 'columns'], [db.refs.length, 'relationships'],
+      [db.indexCount, 'indexes'], [db.enums.length, 'enums'],
+    ];
+    if (p.database_type) stats.push([p.database_type, 'database']);
+    $('#stats').innerHTML = stats.map(([v, l]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('');
+    const legend = db.legend.length ? db.legend : db.groupList.map(g => ({ color: g.color, label: g.label }));
+    $('#legend').innerHTML = legend.map(l => `<span><i class="dot" style="--c:${esc(l.color)}"></i>${esc(l.label)}</span>`).join('');
+    $('#about').hidden = !db.about;
+    $('#about-text').textContent = db.about;
+    const err = $('#error');
+    err.classList.toggle('show', db.warnings.length > 0);
+    err.innerHTML = db.warnings.length ? `<b>${db.warnings.length} parser warning(s):</b><br>${db.warnings.map(esc).join('<br>')}` : '';
+  }
+
+  function renderSidebar() {
+    const db = state.db;
+    $('#groups').innerHTML = db.groupList.map(g => `
+      <label class="grp-row"><input type="checkbox" data-group="${esc(g.name)}" ${state.hiddenGroups.has(g.name) ? '' : 'checked'}>
+      <span class="dot" style="--c:${esc(g.color)}"></span><span>${esc(g.label)}</span><span class="n">${g.tables.length}</span></label>`).join('');
+    const vis = new Set(visibleTables().map(x => x.t.name));
+    $('#nav').innerHTML = db.groupList.map(g => `
+      <div class="nav-group ${state.hiddenGroups.has(g.name) ? 'off' : ''}">
+        <div class="nav-h">${esc(g.label)}</div>
+        ${g.tables.map(t => `<a href="#${esc(t.name)}" data-nav="${esc(t.name)}" class="${vis.has(t.name) ? '' : 'dim'}">
+          <span class="dot" style="--c:${esc(t.color)}"></span><span class="name">${esc(t.name)}</span><span class="n">${t.columns.length}</span></a>`).join('')}
+      </div>`).join('');
+  }
+
+  // ---- tables view --------------------------------------------------------
+  function orderCols(t) {
+    const cols = [...t.columns];
+    if (state.order === 'alpha') cols.sort((a, b) => a.name.localeCompare(b.name));
+    if (state.order === 'keys') {
+      const rank = c => (t.pkCols.has(c.name) ? 0 : t.fkCols.has(c.name) ? 1 : t.uniqueCols.has(c.name) ? 2 : 3);
+      cols.sort((a, b) => rank(a) - rank(b) || a.pos - b.pos);
+    }
+    return cols;
+  }
+
+  function colRow(t, c, m) {
+    const s = c.settings, b = [];
+    const isPk = t.pkCols.has(c.name);
+    if (isPk) b.push('<span class="b pk" title="Primary key">PK</span>');
+    for (const r of t.fkCols.get(c.name) || []) {
+      b.push(`<a class="b fk" href="#${esc(r.to.table)}" data-jump="${esc(r.to.table)}" title="${esc(CARDINALITY[r.op] || r.op)}${r.onDelete ? ' · on delete ' + esc(r.onDelete) : ''}">FK → ${esc(r.to.table)}.${esc(r.to.column)}</a>`);
+    }
+    if (t.uniqueCols.has(c.name)) b.push('<span class="b uq" title="Unique">UQ</span>');
+    if (s.increment) b.push('<span class="b ai" title="Auto increment / identity">AI</span>');
+    if (s.notNull) b.push('<span class="b" title="Not null">NN</span>');
+    else if (!isPk) b.push('<span class="b null">nullable</span>');
+    if (t.indexedCols.has(c.name) && !isPk) b.push(`<span class="b idx" title="Indexed: ${esc(t.indexedCols.get(c.name).join(' · '))}">idx</span>`);
+    s.flags.forEach(f => b.push(`<span class="b">${esc(f)}</span>`));
+
+    const e = c.enum && state.db.enumMap.get(c.enum);
+    const type = e
+      ? `<a class="enum" href="#enum-${esc(e.name)}" data-enum="${esc(e.name)}" title="enum: ${esc(e.values.map(v => v.name).join(' | '))}"><code>${hl(c.type)}</code></a>`
+      : `<code>${hl(c.type)}</code>`;
+    const def = s.default ? `<code class="${s.default.expr ? 'expr' : ''}">${esc(s.default.value)}</code>` : '';
+    return `<tr class="${m.rows.has(c.name) ? 'hit' : ''}">
+      <td class="pos">${c.pos}</td><td class="cname">${hl(c.name)}</td><td class="ctype">${type}</td>
+      <td class="keys">${b.join('')}</td><td class="def">${def}</td>
+      ${state.showNotes ? `<td class="note">${hl(s.note)}</td>` : ''}</tr>`;
+  }
+
+  function indexesBlock(t) {
+    return `<div class="indexes"><span class="lbl">Indexes</span><ul>${t.indexes.map(ix => `
+      <li><code>(${ix.columns.map(esc).join(', ')})</code>
+        ${ix.settings.pk ? '<span class="b pk">PK</span>' : ''}${ix.settings.unique ? '<span class="b uq">UNIQUE</span>' : ''}
+        ${ix.settings.type ? `<span class="b">${esc(ix.settings.type)}</span>` : ''}
+        ${ix.settings.name ? `<span class="muted">${esc(ix.settings.name)}</span>` : ''}
+        ${ix.settings.note ? `<span class="ixnote">— ${hl(ix.settings.note)}</span>` : ''}</li>`).join('')}</ul></div>`;
+  }
+
+  function tableCard({ t, m }) {
+    const collapsed = state.collapsed.has(t.name) && !state.q;
+    const refs = [...new Map(t.incoming.map(r => [`${r.from.table}.${r.from.column}`, r])).values()];
+    return `<section class="card ${collapsed ? 'collapsed' : ''}" id="t-${esc(t.name)}" style="--hc:${esc(t.color)}">
+      <header data-toggle="${esc(t.name)}">
+        <span class="chev">▶</span><h2>${hl(t.name)}</h2>${t.legend ? `<span class="tag">${hl(t.legend)}</span>` : ''}
+        <span class="spacer"></span>
+        <span class="meta">${t.columns.length} cols · ${t.indexes.length} idx · ${t.outgoing.length} FK · ${t.incoming.length} in</span>
+      </header>
+      <div class="body">
+        ${t.note ? `<p class="tnote">${hl(t.note)}</p>` : ''}
+        <div class="scroll"><table>
+          <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Keys &amp; constraints</th><th>Default</th>${state.showNotes ? '<th>Note</th>' : ''}</tr></thead>
+          <tbody>${orderCols(t).map(c => colRow(t, c, m)).join('')}</tbody>
+        </table></div>
+        ${state.showIndexes && t.indexes.length ? indexesBlock(t) : ''}
+        ${refs.length ? `<div class="incoming"><span class="lbl">Referenced by</span>${refs.map(r => `<a class="chip" href="#${esc(r.from.table)}" data-jump="${esc(r.from.table)}">${esc(r.from.table)}.<b>${esc(r.from.column)}</b></a>`).join('')}</div>` : ''}
+      </div>
+    </section>`;
+  }
+
+  // ---- enums view ---------------------------------------------------------
+  function renderEnums() {
+    const q = state.q;
+    const list = state.db.enums.filter(e => !q || has(e.name, q) || e.values.some(v => has(v.name, q) || has(v.note, q)));
+    if (!list.length) return empty();
+    return `<div class="grid enums">${list.map(e => `
+      <section class="card" id="enum-${esc(e.name)}" style="--hc:#A855F7">
+        <header><h2>${hl(e.name)}</h2><span class="spacer"></span><span class="meta">${e.values.length} values</span></header>
+        <div class="body">
+          <ul class="vals">${e.values.map(v => `<li><code>${hl(v.name)}</code>${v.note ? `<span>${hl(v.note)}</span>` : ''}</li>`).join('')}</ul>
+          ${e.usedBy.length ? `<div class="incoming"><span class="lbl">Used by</span>${e.usedBy.map(u => `<a class="chip" href="#${esc(u.table)}" data-jump="${esc(u.table)}">${esc(u.table)}.<b>${esc(u.column)}</b></a>`).join('')}</div>` : '<div class="incoming muted">Not used by any column</div>'}
+        </div>
+      </section>`).join('')}</div>`;
+  }
+
+  // ---- relationships view -------------------------------------------------
+  const REL_COLS = [
+    ['from', 'From'], ['card', 'Cardinality'], ['to', 'To'], ['onDelete', 'On delete'], ['note', 'Note'],
+  ];
+  function relValue(r, key) {
+    switch (key) {
+      case 'from': return `${r.from.table}.${r.from.column}`;
+      case 'to': return `${r.to.table}.${r.to.column}`;
+      case 'card': return CARDINALITY[r.op] || r.op;
+      default: return r[key] || '';
+    }
+  }
+  function renderRefs() {
+    const db = state.db, q = state.q, { key, dir } = state.relSort;
+    const rows = db.refs.filter(r => {
+      const ft = db.tableMap.get(r.from.table), tt = db.tableMap.get(r.to.table);
+      if ((ft && state.hiddenGroups.has(ft.group)) && (tt && state.hiddenGroups.has(tt.group))) return false;
+      return !q || REL_COLS.some(([k]) => has(relValue(r, k), q));
+    }).sort((a, b) => relValue(a, key).localeCompare(relValue(b, key)) * dir || relValue(a, 'from').localeCompare(relValue(b, 'from')));
+    if (!rows.length) return empty();
+    const link = end => `<a href="#${esc(end.table)}" data-jump="${esc(end.table)}">${hl(end.table)}.<b>${hl(end.column)}</b></a>`;
+    return `<div class="rel scroll"><table>
+      <thead><tr>${REL_COLS.map(([k, l]) => `<th data-sort="${k}">${l}${k === key ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${link(r.from)}</td><td><span class="b">${esc(r.op)}</span> ${esc(CARDINALITY[r.op] || '')}</td><td>${link(r.to)}</td>
+        <td>${r.onDelete ? `<span class="b ${r.onDelete === 'cascade' ? 'pk' : ''}">${esc(r.onDelete)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="note">${hl(r.note)}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  const empty = () => `<div class="empty">Nothing matches <b>${esc(state.q)}</b>${state.hiddenGroups.size ? ' in the selected groups' : ''}.</div>`;
+
+  // ---- diagram view -------------------------------------------------------
+  const DG = { HEADER: 34, ROW: 24, PAD_B: 6, MIN_W: 210, STUB: 24 };
+  const SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif';
+  const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  const FONTS = { name: `600 13px ${SANS}`, col: `12.5px ${SANS}`, pk: `700 12.5px ${SANS}`, type: `11.5px ${MONO}` };
+  const KEY_ICON = 'M8.5,12 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 M15.5,12 H22 M19.5,12 V15 M22,12 V14.5';
+  const dg = { x: 0, y: 0, k: 1, pos: null, sizes: new Map(), fitted: false, hover: null, pinned: null, drag: null, anim: 0, raf: 0 };
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const layoutKey = () => 'dbml-layout:' + (state.db.project?.name || 'schema');
+  const box = name => ({ ...dg.pos[name], ...dg.sizes.get(name) });
+  const visibleNames = () => new Set(state.db.tables.filter(t => !state.hiddenGroups.has(t.group)).map(t => t.name));
+  const columnHasRefs = (t, c) => state.db.refs.some(r => (r.from.table === t && r.from.column === c) || (r.to.table === t && r.to.column === c));
+
+  let measureCtx;
+  function textW(text, font) {
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    measureCtx.font = font;
+    return measureCtx.measureText(String(text)).width;
+  }
+
+  function measureTables() {
+    dg.sizes = new Map(state.db.tables.map(t => {
+      let w = textW(t.name, FONTS.name) + (t.note ? 56 : 32);
+      for (const c of t.columns) w = Math.max(w, 30 + textW(c.name, t.pkCols.has(c.name) ? FONTS.pk : FONTS.col) + 28 + textW(c.type, FONTS.type) + 14);
+      return [t.name, { w: Math.ceil(Math.max(DG.MIN_W, w)), h: DG.HEADER + t.columns.length * DG.ROW + DG.PAD_B }];
+    }));
+  }
+
+  // Groups flow left → right, wrapping rows; tables inside a group fill the shortest column first.
+  function autoLayout() {
+    const pos = {}, GAP = 56, GROUP_GAP = 120, SIDE = 28, TOP = 56, MAX_W = 3000;
+    let cx = 0, cy = 0, rowH = 0;
+    for (const g of state.db.groupList) {
+      if (!g.tables.length) continue;
+      const cols = Math.max(1, Math.round(Math.sqrt(g.tables.length * 0.9)));
+      const colH = Array(cols).fill(0), colW = Array(cols).fill(0), slots = [];
+      for (const t of g.tables) {
+        const s = dg.sizes.get(t.name), c = colH.indexOf(Math.min(...colH));
+        slots.push({ t, c, y: colH[c] });
+        colH[c] += s.h + GAP;
+        colW[c] = Math.max(colW[c], s.w);
+      }
+      const colX = colW.map((_, i) => colW.slice(0, i).reduce((a, w) => a + w + GAP, 0));
+      const gw = colW.reduce((a, w) => a + w, 0) + GAP * (cols - 1) + SIDE * 2;
+      const gh = Math.max(...colH) - GAP + TOP + SIDE;
+      if (cx > 0 && cx + gw > MAX_W) { cx = 0; cy += rowH + GROUP_GAP; rowH = 0; }
+      for (const s of slots) pos[s.t.name] = { x: cx + SIDE + colX[s.c], y: cy + TOP + s.y };
+      cx += gw + GROUP_GAP;
+      rowH = Math.max(rowH, gh);
+    }
+    return pos;
+  }
+
+  function ensureLayout() {
+    if (dg.pos) return;
+    measureTables();
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(layoutKey()) || '{}'); } catch {}
+    dg.pos = Object.fromEntries(Object.entries(autoLayout()).map(([n, p]) => {
+      const s = saved[n];
+      return [n, s && Number.isFinite(s.x) && Number.isFinite(s.y) ? { x: s.x, y: s.y } : p];
+    }));
+  }
+  const saveLayout = () => { try { localStorage.setItem(layoutKey(), JSON.stringify(dg.pos)); } catch {} };
+  function resetLayout() {
+    try { localStorage.removeItem(layoutKey()); } catch {}
+    dg.pos = null;
+    ensureLayout();
+    drawDiagram();
+    fit(true);
+  }
+
+  function tableSvg(t, m) {
+    const { w, h } = dg.sizes.get(t.name), p = dg.pos[t.name], H = DG.HEADER, R = DG.ROW;
+    const rows = t.columns.map((c, i) => {
+      const pk = t.pkCols.has(c.name), fks = t.fkCols.get(c.name) || [], s = c.settings;
+      const flags = [
+        pk && 'PRIMARY KEY', ...fks.map(r => `FK → ${r.to.table}.${r.to.column}`), t.uniqueCols.has(c.name) && 'UNIQUE',
+        s.increment && 'AUTO INCREMENT', s.notNull ? 'NOT NULL' : !pk && 'NULLABLE', s.default && `DEFAULT ${s.default.value}`,
+      ].filter(Boolean).join(' · ');
+      const tip = [`${t.name}.${c.name}  ${c.type}`, flags, s.note].filter(Boolean).join('\n');
+      return `<g class="row${i % 2 ? ' alt' : ''}${m.rows.has(c.name) ? ' match' : ''}" data-c="${esc(c.name)}" transform="translate(0,${H + i * R})">
+        <rect class="row-bg" x="1" width="${w - 2}" height="${R}"/>
+        ${pk ? `<path class="pk-ico" d="${KEY_ICON}"/>` : ''}
+        <text class="cn${pk ? ' pk' : ''}" x="28" y="16">${esc(c.name)}</text>
+        <text class="ct${c.enum ? ' enum' : ''}" x="${w - 12}" y="16" text-anchor="end">${esc(c.type)}</text>
+        <title>${esc(tip)}</title></g>`;
+    }).join('');
+    return `<g class="tbl${m.show ? '' : ' dim'}" data-t="${esc(t.name)}" transform="translate(${p.x},${p.y})" style="--hc:${esc(t.color)}">
+      <rect class="tbl-bg" width="${w}" height="${h}" rx="8"/>
+      <path class="tbl-head" d="M0,8 a8,8 0 0 1 8,-8 H${w - 8} a8,8 0 0 1 8,8 V${H} H0 Z"/>
+      <text class="tbl-name" x="12" y="22">${esc(t.name)}</text>
+      ${t.note ? `<g class="tbl-note"><circle cx="${w - 17}" cy="17" r="8"/><text x="${w - 17}" y="21" text-anchor="middle">i</text><title>${esc(t.note)}</title></g>` : ''}
+      ${rows}
+      <rect class="tbl-outline" width="${w}" height="${h}" rx="8"/>
+    </g>`;
+  }
+
+  function anchorY(b, t, col) {
+    const idx = t.columns.findIndex(c => c.name === col);
+    return b.y + (idx < 0 ? DG.HEADER / 2 : DG.HEADER + idx * DG.ROW + DG.ROW / 2);
+  }
+
+  // Orthogonal connector between the two column rows, choosing the facing sides of both boxes.
+  function edgeGeom(r, i) {
+    const ta = state.db.tableMap.get(r.from.table), tb = state.db.tableMap.get(r.to.table);
+    const A = box(ta.name), B = box(tb.name), S = DG.STUB;
+    const ya = anchorY(A, ta, r.from.column), yb = anchorY(B, tb, r.to.column);
+    let sa, sb;
+    if (ta === tb) sa = sb = 1;
+    else if (A.x + A.w + S * 2 <= B.x) { sa = 1; sb = -1; }
+    else if (B.x + B.w + S * 2 <= A.x) { sa = -1; sb = 1; }
+    else sa = sb = Math.abs(A.x + A.w - (B.x + B.w)) <= Math.abs(A.x - B.x) ? 1 : -1;
+    const ax = sa > 0 ? A.x + A.w : A.x, bx = sb > 0 ? B.x + B.w : B.x;
+    const spread = ((i % 5) - 2) * 5;
+    const midX = sa !== sb
+      ? (ax + bx) / 2 + spread
+      : (sa > 0 ? Math.max(ax, bx) + S * 1.5 : Math.min(ax, bx) - S * 1.5) + Math.abs(spread) * sa;
+    return { pts: [[ax, ya], [midX, ya], [midX, yb], [bx, yb]], a: { x: ax, y: ya, d: sa }, b: { x: bx, y: yb, d: sb } };
+  }
+
+  function roundPath(points, r = 8) {
+    const pts = points.filter((p, i) => i === 0 || p[0] !== points[i - 1][0] || p[1] !== points[i - 1][1]);
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+      const d1 = Math.hypot(x1 - x0, y1 - y0), d2 = Math.hypot(x2 - x1, y2 - y1), rr = Math.min(r, d1 / 2, d2 / 2);
+      d += ` L${x1 + (x0 - x1) / d1 * rr},${y1 + (y0 - y1) / d1 * rr} Q${x1},${y1} ${x1 + (x2 - x1) / d2 * rr},${y1 + (y2 - y1) / d2 * rr}`;
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L${last[0]},${last[1]}`;
+  }
+
+  // Crow's foot for the "many" end, a single bar for the "one" end.
+  function endMark({ x, y, d }, many) {
+    const o = x + d * 14;
+    return many ? `M${o},${y} L${x},${y - 6} M${o},${y} L${x},${y + 6}` : `M${x + d * 8},${y - 6} V${y + 6}`;
+  }
+
+  function drawTables() {
+    const vis = visibleNames();
+    $('#dg-tables').innerHTML = state.db.tables.filter(t => vis.has(t.name)).map(t => tableSvg(t, matchTable(t))).join('');
+  }
+
+  function drawEdges() {
+    const vis = visibleNames(), db = state.db;
+    const match = new Map(db.tables.map(t => [t.name, matchTable(t).show]));
+    $('#dg-edges').innerHTML = db.refs.map((r, i) => {
+      if (!vis.has(r.from.table) || !vis.has(r.to.table)) return '';
+      const g = edgeGeom(r, i), d = roundPath(g.pts);
+      const [manyA, manyB] = { '>': [true, false], '<': [false, true], '<>': [true, true] }[r.op] || [false, false];
+      const dim = state.q && !(match.get(r.from.table) && match.get(r.to.table));
+      return `<g class="edge${dim ? ' dim' : ''}" data-i="${i}" data-a="${esc(r.from.table)}" data-ac="${esc(r.from.column)}" data-b="${esc(r.to.table)}" data-bc="${esc(r.to.column)}">
+        <path class="hit" d="${d}"/><path class="line" d="${d}"/><path class="mark" d="${endMark(g.a, manyA)} ${endMark(g.b, manyB)}"/>
+        <title>${esc(`${r.from.table}.${r.from.column} ${r.op} ${r.to.table}.${r.to.column}${r.onDelete ? ' · on delete ' + r.onDelete : ''}`)}</title></g>`;
+    }).join('');
+    applyFocus();
+  }
+
+  function drawGroups() {
+    $('#dg-groups').innerHTML = state.db.groupList
+      .filter(g => g.name !== '(ungrouped)' && g.tables.length && !state.hiddenGroups.has(g.name))
+      .map(g => {
+        const bs = g.tables.map(t => box(t.name));
+        const x0 = Math.min(...bs.map(b => b.x)) - 24, y0 = Math.min(...bs.map(b => b.y)) - 46;
+        const x1 = Math.max(...bs.map(b => b.x + b.w)) + 24, y1 = Math.max(...bs.map(b => b.y + b.h)) + 24;
+        return `<g style="--gc:${esc(g.color)}"><rect class="grp-box" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="14"/>
+          <text class="grp-label" x="${x0 + 16}" y="${y0 + 28}">${esc(g.label)}</text></g>`;
+      }).join('');
+  }
+
+  function drawDiagram() { drawGroups(); drawTables(); drawEdges(); }
+
+  function scheduleRedraw() {
+    if (dg.raf) return;
+    dg.raf = requestAnimationFrame(() => { dg.raf = 0; drawGroups(); drawEdges(); });
+  }
+
+  function applyFocus() {
+    const root = $('#diagram');
+    if (!root?.querySelectorAll) return;
+    const f = dg.hover || dg.pinned;
+    root.classList.toggle('focus', !!f);
+    root.querySelectorAll('.hl').forEach(el => el.classList.remove('hl'));
+    root.querySelectorAll('.tbl').forEach(el => el.classList.toggle('sel', dg.pinned?.t === el.dataset.t));
+    if (!f) return;
+    const tables = new Set(f.t ? [f.t] : []), rows = [];
+    root.querySelectorAll('.edge').forEach(el => {
+      const d = el.dataset;
+      const hit = f.edge !== undefined ? String(f.edge) === d.i
+        : f.c ? (d.a === f.t && d.ac === f.c) || (d.b === f.t && d.bc === f.c)
+        : d.a === f.t || d.b === f.t;
+      if (!hit) return;
+      el.classList.add('hl');
+      el.parentNode.appendChild(el);
+      tables.add(d.a); tables.add(d.b);
+      rows.push([d.a, d.ac], [d.b, d.bc]);
+    });
+    root.querySelectorAll('.tbl').forEach(el => { if (tables.has(el.dataset.t)) el.classList.add('hl'); });
+    for (const [t, c] of rows) root.querySelector(`.tbl[data-t="${CSS.escape(t)}"] .row[data-c="${CSS.escape(c)}"]`)?.classList.add('hl');
+  }
+
+  function applyView() {
+    const v = document.getElementById('dg-view');
+    if (!v) return;
+    const tf = `translate(${dg.x},${dg.y}) scale(${dg.k})`;
+    v.setAttribute('transform', tf);
+    document.getElementById('dg-grid')?.setAttribute('patternTransform', tf);
+    const z = document.getElementById('dg-zoom');
+    if (z) z.textContent = Math.round(dg.k * 100) + '%';
+  }
+
+  function animateTo(x, y, k) {
+    const from = { x: dg.x, y: dg.y, k: dg.k }, t0 = performance.now();
+    cancelAnimationFrame(dg.anim);
+    const step = now => {
+      const p = Math.min(1, (now - t0) / 280), e = 1 - Math.pow(1 - p, 3);
+      dg.x = from.x + (x - from.x) * e; dg.y = from.y + (y - from.y) * e; dg.k = from.k + (k - from.k) * e;
+      applyView();
+      if (p < 1) dg.anim = requestAnimationFrame(step);
+    };
+    dg.anim = requestAnimationFrame(step);
+  }
+
+  const viewport = () => { const svg = $('#dg-svg'); return { W: svg?.clientWidth || 1200, H: svg?.clientHeight || 800 }; };
+
+  function fit(animated) {
+    const names = [...visibleNames()];
+    if (!names.length) return;
+    const bs = names.map(box), { W, H } = viewport();
+    const x0 = Math.min(...bs.map(b => b.x)) - 30, y0 = Math.min(...bs.map(b => b.y)) - 50;
+    const x1 = Math.max(...bs.map(b => b.x + b.w)) + 30, y1 = Math.max(...bs.map(b => b.y + b.h)) + 30;
+    const k = clamp(Math.min((W - 40) / (x1 - x0), (H - 40) / (y1 - y0)), 0.08, 1.2);
+    const x = (W - (x1 - x0) * k) / 2 - x0 * k, y = (H - (y1 - y0) * k) / 2 - y0 * k;
+    if (animated) animateTo(x, y, k);
+    else { Object.assign(dg, { x, y, k }); applyView(); }
+  }
+
+  function zoomBy(f, px, py, animated) {
+    const { W, H } = viewport();
+    px ??= W / 2; py ??= H / 2;
+    const k = clamp(dg.k * f, 0.08, 2.5), r = k / dg.k;
+    const x = px - (px - dg.x) * r, y = py - (py - dg.y) * r;
+    if (animated) animateTo(x, y, k);
+    else { Object.assign(dg, { x, y, k }); applyView(); }
+  }
+
+  function centerOn(name) {
+    const t = state.db.tableMap.get(name);
+    if (!t) return;
+    if (state.hiddenGroups.has(t.group)) { state.hiddenGroups.delete(t.group); render(); }
+    const b = box(t.name), { W, H } = viewport(), k = Math.max(dg.k, 0.9);
+    const y = b.h * k < H - 80 ? H / 2 - (b.y + b.h / 2) * k : 60 - b.y * k;
+    animateTo(W / 2 - (b.x + b.w / 2) * k, y, k);
+    dg.pinned = { t: t.name };
+    applyFocus();
+    history.replaceState(null, '', '#' + t.name);
+    const el = $(`#dg-tables .tbl[data-t="${CSS.escape(t.name)}"]`);
+    if (el?.classList) { el.classList.remove('pulse'); void el.getBBox?.(); el.classList.add('pulse'); }
+  }
+
+  function sizeDiagram() {
+    const el = $('#diagram');
+    if (el?.getBoundingClientRect) el.style.height = Math.max(420, innerHeight - el.getBoundingClientRect().top - 16) + 'px';
+  }
+
+  const diagramShell = () => `<div class="diagram" id="diagram">
+    <svg id="dg-svg" xmlns="http://www.w3.org/2000/svg">
+      <defs><pattern id="dg-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle class="dg-dot" cx="1.5" cy="1.5" r="1.2"/></pattern></defs>
+      <rect width="100%" height="100%" fill="url(#dg-grid)"/>
+      <g id="dg-view"><g id="dg-groups"></g><g id="dg-edges"></g><g id="dg-tables"></g></g>
+    </svg>
+    <div class="dg-controls">
+      <button type="button" data-dg="out" title="Zoom out">−</button>
+      <button type="button" data-dg="reset" id="dg-zoom" title="Reset to 100%">100%</button>
+      <button type="button" data-dg="in" title="Zoom in">+</button>
+      <button type="button" data-dg="fit" title="Fit all tables">Fit</button>
+      <button type="button" data-dg="layout" title="Discard dragged positions">Auto-arrange</button>
+    </div>
+    <div class="dg-hint">Drag to pan · ⌘/Ctrl + scroll or pinch to zoom · drag tables to move · click to focus · double-click for details · \ hides sidebar</div>
+  </div>`;
+
+  function bindDiagram() {
+    const svg = $('#dg-svg');
+    const local = e => { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+
+    svg.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      cancelAnimationFrame(dg.anim);
+      const tbl = e.target.closest('.tbl'), row = e.target.closest('.row');
+      const s = { type: tbl ? 'table' : 'pan', name: tbl?.dataset.t, col: row?.dataset.c, sx: e.clientX, sy: e.clientY, moved: false };
+      if (tbl) { const p = dg.pos[s.name]; s.ox = p.x; s.oy = p.y; tbl.parentNode.appendChild(tbl); }
+      else { s.ox = dg.x; s.oy = dg.y; svg.classList.add('panning'); }
+      dg.drag = s;
+      svg.setPointerCapture(e.pointerId);
+    });
+    svg.addEventListener('pointermove', e => {
+      const s = dg.drag;
+      if (!s) return;
+      const dx = e.clientX - s.sx, dy = e.clientY - s.sy;
+      if (!s.moved && Math.hypot(dx, dy) < 3) return;
+      s.moved = true;
+      if (s.type === 'pan') { dg.x = s.ox + dx; dg.y = s.oy + dy; applyView(); return; }
+      const p = dg.pos[s.name];
+      p.x = Math.round(s.ox + dx / dg.k);
+      p.y = Math.round(s.oy + dy / dg.k);
+      svg.querySelector(`.tbl[data-t="${CSS.escape(s.name)}"]`)?.setAttribute('transform', `translate(${p.x},${p.y})`);
+      scheduleRedraw();
+    });
+    const end = () => {
+      const s = dg.drag;
+      dg.drag = null;
+      svg.classList.remove('panning');
+      if (!s) return;
+      if (s.type === 'table' && s.moved) { saveLayout(); return; }
+      if (s.type === 'table') {
+        const target = { t: s.name, c: s.col && columnHasRefs(s.name, s.col) ? s.col : undefined };
+        dg.pinned = dg.pinned && dg.pinned.t === target.t && dg.pinned.c === target.c ? null : target;
+      } else if (!s.moved) dg.pinned = null;
+      applyFocus();
+    };
+    svg.addEventListener('pointerup', end);
+    svg.addEventListener('pointercancel', end);
+
+    svg.addEventListener('pointerover', e => {
+      if (dg.drag) return;
+      const tbl = e.target.closest('.tbl'), row = e.target.closest('.row'), edge = e.target.closest('.edge');
+      const next = edge ? { edge: edge.dataset.i }
+        : tbl ? { t: tbl.dataset.t, c: row && columnHasRefs(tbl.dataset.t, row.dataset.c) ? row.dataset.c : undefined }
+        : null;
+      if (JSON.stringify(next) !== JSON.stringify(dg.hover)) { dg.hover = next; applyFocus(); }
+    });
+    svg.addEventListener('pointerleave', () => { if (dg.hover) { dg.hover = null; applyFocus(); } });
+
+    svg.addEventListener('wheel', e => {
+      e.preventDefault();
+      cancelAnimationFrame(dg.anim);
+      const unit = e.deltaMode === 1 ? 16 : 1;
+      if (e.ctrlKey || e.metaKey) zoomBy(Math.exp(-e.deltaY * unit * 0.01), ...local(e));
+      else { dg.x -= e.deltaX * unit; dg.y -= e.deltaY * unit; applyView(); }
+    }, { passive: false });
+
+    svg.addEventListener('dblclick', e => {
+      const tbl = e.target.closest('.tbl');
+      if (tbl) jump(tbl.dataset.t);
+      else zoomBy(1.5, ...local(e), true);
+    });
+
+    $('.dg-controls').addEventListener('click', e => {
+      const action = e.target.closest('[data-dg]')?.dataset.dg;
+      if (action === 'in') zoomBy(1.25, undefined, undefined, true);
+      if (action === 'out') zoomBy(0.8, undefined, undefined, true);
+      if (action === 'reset') zoomBy(1 / dg.k, undefined, undefined, true);
+      if (action === 'fit') fit(true);
+      if (action === 'layout') resetLayout();
+    });
+  }
+
+  function buildDiagram() {
+    $('#content').innerHTML = diagramShell();
+    ensureLayout();
+    sizeDiagram();
+    drawDiagram();
+    bindDiagram();
+    if (dg.fitted) applyView();
+    else { dg.fitted = true; fit(false); }
+  }
+
+  function renderMain() {
+    const db = state.db;
+    document.querySelectorAll('#tabs [data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === state.view));
+    const vt = visibleTables();
+    $('#n-tables').textContent = vt.length;
+    $('#n-enums').textContent = db.enums.length;
+    $('#n-refs').textContent = db.refs.length;
+    $('#opt-notes').checked = state.showNotes;
+    $('#opt-indexes').checked = state.showIndexes;
+    $('#opt-order').value = state.order;
+    const tableOnly = state.view === 'tables';
+    ['#opt-notes', '#opt-indexes', '#opt-order'].forEach(s => { $(s).closest('label, select').style.display = tableOnly ? '' : 'none'; });
+    ['#btn-collapse', '#btn-expand'].forEach(s => { $(s).style.display = tableOnly ? '' : 'none'; });
+
+    document.body.classList.toggle('dg-mode', state.view === 'diagram');
+    if (state.view === 'diagram') { window.scrollTo(0, 0); buildDiagram(); return; }
+    $('#content').innerHTML =
+      state.view === 'enums' ? renderEnums() :
+      state.view === 'refs' ? renderRefs() :
+      vt.length ? `<div class="grid">${vt.map(tableCard).join('')}</div>` : empty();
+  }
+
+  const render = () => { renderSidebar(); renderMain(); };
+
+  // Keeps the diagram centred while its width changes with the sidebar.
+  function setSidebar(show) {
+    const before = state.view === 'diagram' ? viewport().W : 0;
+    state.showSidebar = show;
+    savePrefs();
+    $('.app').classList.toggle('no-side', !show);
+    $('#btn-sidebar').setAttribute('aria-pressed', String(show));
+    if (state.view === 'diagram' && before) { dg.x += (viewport().W - before) / 2; applyView(); }
+  }
+
+  // ---- navigation ---------------------------------------------------------
+  function flash(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+  function jump(name, { smooth = true } = {}) {
+    const t = state.db.tableMap.get(name);
+    if (!t) return;
+    state.view = 'tables';
+    state.hiddenGroups.delete(t.group);
+    state.collapsed.delete(t.name);
+    if (state.q && !matchTable(t).show) { state.q = ''; $('#search').value = ''; }
+    savePrefs();
+    render();
+    history.replaceState(null, '', '#' + t.name);
+    const el = document.getElementById('t-' + t.name);
+    smooth ? flash(el) : el?.scrollIntoView();
+  }
+  function jumpEnum(name) {
+    state.view = 'enums';
+    if (state.q && !has(name, state.q)) { state.q = ''; $('#search').value = ''; }
+    savePrefs();
+    render();
+    history.replaceState(null, '', '#enum-' + name);
+    flash(document.getElementById('enum-' + name));
+  }
+
+  // ---- loading ------------------------------------------------------------
+  function load(text, source) {
+    try {
+      const db = DBML.parse(text);
+      state.db = db;
+      state.source = source;
+      const names = new Set(db.groupList.map(g => g.name));
+      state.hiddenGroups = new Set([...state.hiddenGroups].filter(g => names.has(g)));
+      state.collapsed = new Set([...state.collapsed].filter(n => db.tableMap.has(n)));
+      Object.assign(dg, { pos: null, fitted: false, hover: null, pinned: null });
+      renderHeader();
+      render();
+    } catch (err) {
+      const box = $('#error');
+      box.classList.add('show');
+      box.innerHTML = `<b>Could not parse ${esc(source)}:</b> ${esc(err.message)}`;
+    }
+  }
+
+  async function boot() {
+    let text = $('#dbml-source').textContent.replace(/^\n/, ''), source = 'embedded snapshot';
+    if (location.protocol.startsWith('http')) {
+      try {
+        const res = await fetch('launchpad.dbml', { cache: 'no-store' });
+        if (res.ok) { text = await res.text(); source = 'launchpad.dbml (live)'; }
+      } catch {}
+    } else {
+      $('#serve-hint').hidden = false;
+    }
+    load(text, source);
+    const hash = decodeURIComponent(location.hash.slice(1));
+    if (hash.startsWith('enum-')) jumpEnum(hash.slice(5));
+    else if (hash && state.view === 'diagram') centerOn(hash);
+    else if (hash) jump(hash, { smooth: false });
+  }
+
+  // ---- events -------------------------------------------------------------
+  $('#serve-copy').addEventListener('click', async e => {
+    try { await navigator.clipboard.writeText($('#serve-cmd').textContent); e.target.textContent = 'Copied'; }
+    catch { getSelection().selectAllChildren($('#serve-cmd')); e.target.textContent = 'Press ⌘C'; }
+    setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
+  });
+  $('#search').addEventListener('input', e => { state.q = e.target.value.trim().toLowerCase(); render(); });
+  $('#groups').addEventListener('change', e => {
+    const g = e.target.dataset.group;
+    if (g === undefined) return;
+    e.target.checked ? state.hiddenGroups.delete(g) : state.hiddenGroups.add(g);
+    render();
+  });
+  $('#groups-all').addEventListener('click', () => {
+    state.hiddenGroups = state.hiddenGroups.size ? new Set() : new Set(state.db.groupList.map(g => g.name));
+    render();
+  });
+  $('#opt-notes').addEventListener('change', e => { state.showNotes = e.target.checked; savePrefs(); renderMain(); });
+  $('#opt-indexes').addEventListener('change', e => { state.showIndexes = e.target.checked; savePrefs(); renderMain(); });
+  $('#opt-order').addEventListener('change', e => { state.order = e.target.value; savePrefs(); renderMain(); });
+  $('#btn-collapse').addEventListener('click', () => { state.collapsed = new Set(state.db.tables.map(t => t.name)); renderMain(); });
+  $('#btn-expand').addEventListener('click', () => { state.collapsed.clear(); renderMain(); });
+
+  document.addEventListener('click', e => {
+    const nav = e.target.closest('[data-nav]');
+    if (nav) { e.preventDefault(); state.view === 'diagram' ? centerOn(nav.dataset.nav) : jump(nav.dataset.nav); return; }
+    const j = e.target.closest('[data-jump]');
+    if (j) { e.preventDefault(); jump(j.dataset.jump); return; }
+    const en = e.target.closest('[data-enum]');
+    if (en) { e.preventDefault(); jumpEnum(en.dataset.enum); return; }
+    const tg = e.target.closest('[data-toggle]');
+    if (tg) {
+      const n = tg.dataset.toggle;
+      state.collapsed.has(n) ? state.collapsed.delete(n) : state.collapsed.add(n);
+      tg.parentElement.classList.toggle('collapsed');
+      return;
+    }
+    const s = e.target.closest('[data-sort]');
+    if (s) {
+      const k = s.dataset.sort;
+      state.relSort = { key: k, dir: state.relSort.key === k ? -state.relSort.dir : 1 };
+      renderMain();
+      return;
+    }
+    const tab = e.target.closest('[data-view]');
+    if (tab) { state.view = tab.dataset.view; savePrefs(); renderMain(); window.scrollTo({ top: 0 }); }
+  });
+
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+    if (e.key === '/' && !typing) { e.preventDefault(); if (!state.showSidebar) setSidebar(true); $('#search').focus(); $('#search').select(); }
+    if (e.key === '\\' && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setSidebar(!state.showSidebar); }
+    if (e.key === 'Escape' && document.activeElement === $('#search')) { $('#search').value = ''; state.q = ''; render(); $('#search').blur(); }
+  });
+
+  $('#file').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (f) load(await f.text(), f.name);
+    e.target.value = '';
+  });
+  addEventListener('resize', () => { if (state.view === 'diagram') sizeDiagram(); });
+  addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+  addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+  addEventListener('drop', async e => {
+    e.preventDefault();
+    document.body.classList.remove('dragging');
+    const f = e.dataTransfer.files[0];
+    if (f) load(await f.text(), f.name);
+  });
+
+  $('#btn-sidebar').addEventListener('click', () => setSidebar(!state.showSidebar));
+  setSidebar(state.showSidebar);
+  boot();
+})();
+</script>
+</body>
+</html>

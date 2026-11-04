@@ -9,7 +9,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * The vote-integrity summary of one product (see ProductIntegrity), with the product it is about.
  *
- * @mixin \stdClass
  * @property array<string, mixed> $resource
  */
 class ProductIntegrityResource extends JsonResource

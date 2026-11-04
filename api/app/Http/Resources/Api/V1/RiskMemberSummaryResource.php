@@ -10,7 +10,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * The member risk summary built by RiskMemberSummary. Profile basics only: never the e-mail, avatar path or any hash.
  *
- * @mixin \stdClass
  * @property array<string, mixed> $resource
  */
 class RiskMemberSummaryResource extends JsonResource

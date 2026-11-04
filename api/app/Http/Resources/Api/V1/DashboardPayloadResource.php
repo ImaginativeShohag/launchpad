@@ -7,8 +7,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The series, rank and referrer payloads: the Action already shaped the array, the resource only wraps it in `data`.
- *
- * @mixin \stdClass
  */
 class DashboardPayloadResource extends JsonResource
 {

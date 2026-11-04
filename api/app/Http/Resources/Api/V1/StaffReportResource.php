@@ -10,8 +10,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * One row of the staff queue: a reported target with the count, the reasons and the score of its open reports. The
  * resource is the array ReportQueue::open() builds. Staff only; free text in it (names, excerpts) is data, to be
  * rendered as text.
- *
- * @mixin \stdClass
  */
 class StaffReportResource extends JsonResource
 {

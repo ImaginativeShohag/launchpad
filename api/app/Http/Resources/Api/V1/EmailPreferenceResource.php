@@ -8,7 +8,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * One row of the preference list: `{type, enabled}`. The resource wraps the plain arrays the action returns.
  *
- * @mixin \stdClass
  * @property string $type
  * @property bool $enabled
  */

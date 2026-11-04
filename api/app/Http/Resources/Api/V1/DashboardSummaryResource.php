@@ -7,8 +7,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The summary tiles with their keys written out (a new Action field never leaks into the response unnoticed).
- *
- * @mixin \stdClass
  */
 class DashboardSummaryResource extends JsonResource
 {

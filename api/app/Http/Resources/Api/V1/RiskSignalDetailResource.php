@@ -2,12 +2,13 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Models\RiskSignal;
 use Illuminate\Http\Request;
 
 /**
  * A signal with its stored `details` and the evidence resolved from them (members, votes with fingerprints, product).
  *
- * @mixin \App\Models\RiskSignal
+ * @mixin RiskSignal
  */
 class RiskSignalDetailResource extends RiskSignalResource
 {

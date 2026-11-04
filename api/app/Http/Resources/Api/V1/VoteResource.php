@@ -6,9 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Wraps a plain array, not a model; the stdClass mixin below only tells Scramble there is no model to infer.
+ * Wraps the vote action’s plain array response.
  *
- * @mixin \stdClass
  * @property array{voted: bool, votes_count: int} $resource
  */
 class VoteResource extends JsonResource

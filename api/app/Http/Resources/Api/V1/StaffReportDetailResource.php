@@ -10,8 +10,6 @@ use Illuminate\Support\Collection;
 
 /**
  * One reported target in full, its open reports and its latest closed ones. The resource is the array ReportQueue::detail() builds.
- *
- * @mixin \stdClass
  */
 class StaffReportDetailResource extends JsonResource
 {

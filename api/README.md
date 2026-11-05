@@ -3,7 +3,7 @@
 Laravel 13 JSON API (`/api/v1`) for the Launchpad web app and the future phone app.
 
 - **Going live? Follow the [setup checklist](../docs/SETUP-CHECKLIST.md)** (everything you must configure yourself).
-- Design: `../docs/superpowers/specs/2026-10-15-foundation-accounts-design.md`
+- Local design notes (ignored, when available): `../docs/superpowers/specs/2026-10-15-foundation-accounts-design.md`
 - Schema: `../docs/database/launchpad.dbml`; decisions: `../docs/database/DECISIONS.md`
 - `../docs/database/launchpad.html` is a viewer generated from the DBML: it embeds a copy of `launchpad.dbml` (the `<script type="text/plain" id="dbml-source">` block) that it shows when opened as a `file://` page, and it fetches the live `.dbml` only when served over http. It has no build script, so **after every change to `launchpad.dbml` regenerate the embedded copy** from the repo root: `python3 -I -c "import re,pathlib; h=pathlib.Path('docs/database/launchpad.html'); d=pathlib.Path('docs/database/launchpad.dbml').read_text(); assert '</script' not in d; h.write_text(re.sub(r'(<script type=\"text/plain\" id=\"dbml-source\">\n).*?(</script>)', lambda m: m.group(1)+d+m.group(2), h.read_text(), count=1, flags=re.S))"` (no network or extra tool needed), then commit both files.
 

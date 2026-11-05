@@ -24,7 +24,7 @@ It is two apps in one repository:
 
 ## Run it locally
 
-You need Docker and Node. Full instructions are in [docs/superpowers/HANDOFF.md](docs/superpowers/HANDOFF.md) ("How to run everything"); the short version:
+You need Docker and Node. Full instructions are in [api/README.md](api/README.md) and [web/README.md](web/README.md); the short version:
 
 ```bash
 # API (from api/)
@@ -58,14 +58,14 @@ Everything you have to configure yourself (domains, env vars, database, Redis, w
 
 | Document | Purpose |
 |---|---|
-| [docs/superpowers/HANDOFF.md](docs/superpowers/HANDOFF.md) | Start here: repo map, how to run, schedule, production checklist, open decisions |
 | [PROGRESS.md](PROGRESS.md) | Project tracker: sub-projects, commits, specs and plans |
 | [api/README.md](api/README.md) | API reference: endpoints, settings, operations |
 | [web/README.md](web/README.md) | Web app architecture |
 | [docs/database/](docs/database) | Schema (`launchpad.dbml`, with an HTML viewer) and the numbered decision log (`DECISIONS.md`) |
-| [docs/superpowers/](docs/superpowers) | Design specs and build plans for each sub-project |
 | [.agents/lessons/_learned.md](.agents/lessons/_learned.md) | Engineering rules learned while building |
 | [AGENTS.md](AGENTS.md) | Standing conventions for anyone (or any agent) changing the code |
+
+Design specs, build plans and the handoff in `docs/superpowers/` are local, ignored notes and are not included in clones.
 
 ## Status
 

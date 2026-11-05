@@ -2,18 +2,18 @@
 
 A product-launch site (daily launches, voting, ranking) built from `Client requirement.md`: a Laravel 13 JSON API (`api/`) and a React web app (`web/`) that runs on it. The project began as a front-end-only prototype (mock data in `localStorage`); every screen now runs on the API and the prototype's mock store is gone.
 
-**Status: feature complete.** All nine sub-projects are built. For the state of the repo, how to run it, the production checklist and the open decisions, read `docs/superpowers/HANDOFF.md`. Last verified: API about 6,139 Pest tests, web 586 vitest tests.
+**Status: feature complete.** All nine sub-projects are built. For setup and operations, read `README.md`, `api/README.md`, `web/README.md` and `docs/SETUP-CHECKLIST.md`. The optional local handoff is `docs/superpowers/HANDOFF.md`. Last verified: API about 6,139 Pest tests, web 586 vitest tests.
 
 ## Stack
 
 - API: Laravel 13, PostgreSQL 18, Redis, Sanctum (cookie session for the web, tokens for mobile), Reverb (websockets), Pest, Larastan level 8. Run everything inside Sail.
 - Web: Vite 8, React 19, TypeScript, Tailwind CSS 4, React Router 7, TanStack Query 5, `laravel-echo`, Motion, lucide-react; self-hosted Inter and Bricolage Grotesque; the Ember design (light and dark).
 
-Run: see `docs/superpowers/HANDOFF.md` ("How to run everything") and `api/README.md`, `web/README.md`.
+Run: see `api/README.md` and `web/README.md`.
 
 ## Sub-projects
 
-Legend: [x] built and committed. Each has a spec and a plan in `docs/superpowers/`; each spec ends with a "Clarifications made while planning and building" section (the code wins where they differ).
+Legend: [x] built and committed. Specs and plans in `docs/superpowers/` are local, ignored notes (not included in clones); each spec ends with a "Clarifications made while planning and building" section (the code wins where they differ).
 
 | # | Sub-project | Status | Commits (oldest first) | Spec / plan |
 |---|---|---|---|---|
@@ -61,6 +61,6 @@ Kept from the prototype: the design tokens and UI kit, `ProductRow`, `VoteButton
 
 ## Where things live
 
-- Resuming or deploying: `docs/superpowers/HANDOFF.md` (state, repo map, run commands, schedule, production checklist, open decisions, next steps).
+- Resuming or deploying: `README.md` and `docs/SETUP-CHECKLIST.md`. Optional local handoff: `docs/superpowers/HANDOFF.md`.
 - Standing rules: `AGENTS.md` and `.agents/lessons/_learned.md`. API reference and operations: `api/README.md`. Web reference: `web/README.md`.
 - Client brief: `Client requirement.md`.

@@ -83,3 +83,6 @@ dist-ssr/
 *.dump
 *.bak
 *.backup
+
+# Local design and implementation notes
+/docs/superpowers/

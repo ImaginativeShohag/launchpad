@@ -275,7 +275,8 @@ body.dragging::after{content:"Drop a .dbml file to preview it";position:fixed;in
 </div>
 
 <script type="text/plain" id="dbml-source">
-// Launchpad — full database design (PostgreSQL 17, Laravel 13)
+// Launchpad — full database design (PostgreSQL 18, Laravel 13)
+// Verified against all 47 applied migrations and the running schema on 2026-11-05.
 // Paste into https://dbdiagram.io (or open with any DBML viewer).
 //
 // Header colours = sub-project that owns the table:
@@ -293,10 +294,13 @@ body.dragging::after{content:"Drop a .dbml file to preview it";position:fixed;in
 // Conventions
 // - Decision log: docs/database/DECISIONS.md
 // - Primary keys: ULID char(26) everywhere (HasUlids, foreignUlid, ulidMorphs). Safe to expose.
-//   Exceptions: Laravel internals (jobs, failed_jobs, personal_access_tokens.id) keep bigint.
+//   Exceptions: jobs, failed_jobs and personal_access_tokens.id keep bigint; migrations.id is integer,
+//   and cache/cache_locks keys, job_batches.id, sessions.id and password_reset_tokens.email are varchar.
 //   Human URLs still use users.handle (/u/{handle}) and products.slug (/p/{slug}).
-// - All timestamps are timestamptz (UTC). "Launch day" = a UTC calendar day, 00:00–24:00 UTC (no DST, one shared "today").
-// - Enums are stored as varchar + CHECK constraint, mapped to PHP backed enums (not native PG enums).
+// - Timestamps are timestamptz (UTC), except Laravel failed_jobs.failed_at (timestamp without time zone).
+//   This diagram uses timestamptz for precision 0; timestamptz(6) preserves microseconds. "Launch day" = a UTC calendar day, 00:00–24:00 UTC (no DST, one shared "today").
+// - Enums below document allowed values; column types show actual varchar storage with CHECK constraints.
+//   PHP backed enums map those values; PostgreSQL has no native enum types.
 // - Roles: single users.role column; permissions live in Laravel Policies (no role/permission tables).
 // - Images: path column on the owner, files on a Laravel disk (local → S3/R2), processed by one StoreImage action
 //   (resize, strip EXIF/GPS, WebP). No shared media table.
@@ -454,7 +458,7 @@ Table users [headercolor: #3B82F6] {
   pending_email varchar(255) [note: 'requested new email; becomes email only after the link sent to it is confirmed']
   pending_email_expires_at timestamptz [note: 'link valid 60 min; old address gets a cancel link']
   password varchar(255) [note: 'argon2id hash; null = Google-only account']
-  role user_role [not null, default: 'member', note: 'founder is derived (has products), not stored']
+  role varchar(255) [not null, default: 'member', note: 'Values: user_role (varchar + CHECK). founder is derived (has products), not stored']
   headline varchar(120) [note: 'one line about them']
   avatar_path varchar(255) [note: 'path on configured disk (public / s3)']
   risk_score smallint [not null, default: 0, note: "0-100 (CHECK users_risk_score_range), maintained by launchpad:detect-abuse: per kind the strongest signal contribution (dismissed 0, confirmed full weight, open faded linearly over anticheat.decay_days), summed, capped at 100. At anticheat.flag_risk_score (70) the member's votes on yesterday's and today's launch days are flagged (they still count)"]
@@ -470,7 +474,7 @@ Table users [headercolor: #3B82F6] {
     role
     suspended_at
     (created_at desc, id desc) [name: 'users_created_at_id_index', note: 'PARTIAL: WHERE deleted_at IS NULL. The admin member directory (GET /admin/users), newest first, keyset; id DESC so the cursor has one direction. Created by raw SQL (plain CREATE INDEX: maintenance window, or CREATE INDEX CONCURRENTLY by hand first)']
-    risk_score [name: 'users_risk_score_index', note: 'PARTIAL: (risk_score DESC, id DESC) WHERE risk_score > 0. The staff members-by-risk list, worst first; id DESC so the keyset has one direction. Created by raw SQL']
+    (risk_score desc, id desc) [name: 'users_risk_score_index', note: 'PARTIAL: (risk_score DESC, id DESC) WHERE risk_score > 0. The staff members-by-risk list, worst first; id DESC so the keyset has one direction. Created by raw SQL']
   }
 
   Note: '''
@@ -486,8 +490,8 @@ Table users [headercolor: #3B82F6] {
 
 Table user_links [headercolor: #3B82F6] {
   id char(26) [pk, note: 'ULID']
-  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
-  kind link_kind [not null]
+  user_id char(26) [not null, note: 'on delete cascade']
+  kind varchar(255) [not null, note: 'Values: link_kind (varchar + CHECK).']
   label varchar(40) [note: "optional display text, e.g. 'Blog'"]
   url varchar(2048) [not null, note: 'https only']
   position smallint [not null]
@@ -503,7 +507,7 @@ Table user_links [headercolor: #3B82F6] {
 
 Table social_accounts [headercolor: #3B82F6] {
   id char(26) [pk, note: 'ULID']
-  user_id char(26) [not null, ref: > users.id, note: 'on delete cascade']
+  user_id char(26) [not null, note: 'on delete cascade']
   provider varchar(20) [not null, note: "'google'"]
   provider_user_id varchar(255) [not null, note: 'Google sub — never match on email alone']
   provider_email varchar(255) [not null]
@@ -532,6 +536,7 @@ Table audit_logs [headercolor: #3B82F6] {
     (subject_type, subject_id)
     (actor_id, created_at)
     (action, created_at)
+    (created_at desc, id desc) [name: 'audit_logs_created_at_id_index']
     created_at [name: 'audit_logs_unpurged_network_index', note: 'PARTIAL: WHERE ip_hash IS NOT NULL OR user_agent IS NOT NULL; lets the retention purge find old rows without scanning emptied ones']
   }
 
@@ -591,9 +596,48 @@ Table settings [headercolor: #3B82F6] {
 // 1. Framework tables (Laravel / Sanctum defaults)
 //////////////////////////////////////////////////////////////
 
+Table cache [headercolor: #64748B] {
+  key varchar(255) [pk]
+  value text [not null]
+  expiration bigint [not null]
+
+  indexes {
+    expiration [name: 'cache_expiration_index']
+  }
+}
+
+Table cache_locks [headercolor: #64748B] {
+  key varchar(255) [pk]
+  owner varchar(255) [not null]
+  expiration bigint [not null]
+
+  indexes {
+    expiration [name: 'cache_locks_expiration_index']
+  }
+}
+
+Table job_batches [headercolor: #64748B] {
+  id varchar(255) [pk]
+  name varchar(255) [not null]
+  total_jobs integer [not null]
+  pending_jobs integer [not null]
+  failed_jobs integer [not null]
+  failed_job_ids text [not null]
+  options text
+  cancelled_at integer
+  created_at integer [not null]
+  finished_at integer
+}
+
+Table migrations [headercolor: #64748B] {
+  id integer [pk, increment]
+  migration varchar(255) [not null]
+  batch integer [not null]
+}
+
 Table sessions [headercolor: #64748B] {
   id varchar(255) [pk]
-  user_id char(26) [ref: > users.id]
+  user_id char(26) [note: 'Indexed user id; no foreign key in the migration']
   ip_address varchar(45)
   user_agent text
   payload text [not null]
@@ -611,7 +655,7 @@ Table personal_access_tokens [headercolor: #64748B] {
   id bigint [pk, increment]
   tokenable_type varchar(255) [not null, note: 'polymorphic → users']
   tokenable_id char(26) [not null]
-  name varchar(255) [not null, note: "device name, e.g. 'Amina’s iPhone'"]
+  name text [not null, note: "device name, e.g. 'Amina’s iPhone'"]
   token varchar(64) [not null, unique, note: 'SHA-256 of the token, plain text never stored']
   abilities text
   last_used_at timestamptz
@@ -652,11 +696,15 @@ Table jobs [headercolor: #64748B] {
 Table failed_jobs [headercolor: #64748B] {
   id bigint [pk, increment]
   uuid varchar(255) [not null, unique]
-  connection text [not null]
-  queue text [not null]
+  connection varchar(255) [not null]
+  queue varchar(255) [not null]
   payload text [not null]
   exception text [not null]
-  failed_at timestamptz [not null, default: `now()`]
+  failed_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (connection, queue, failed_at) [name: 'failed_jobs_connection_queue_failed_at_index']
+  }
 }
 
 //////////////////////////////////////////////////////////////
@@ -685,9 +733,9 @@ Table products [headercolor: #F97316] {
   description text [note: 'editable after launch']
   website_url varchar(2048) [note: 'required main link (https); editable after launch']
   logo_path varchar(255)
-  status product_status [not null, default: 'draft']
+  status varchar(255) [not null, default: 'draft', note: 'Values: product_status (varchar + CHECK).']
   launch_date date [note: 'UTC day; goes live 00:00 UTC; changeable until launch; max per maker per day = settings.launch.max_per_maker_per_day (2)']
-  submitted_at timestamptz [note: 'last submit — review queue is ordered by this, oldest first']
+  submitted_at timestamptz(6) [note: 'last submit — review queue is ordered by this, oldest first']
   approved_at timestamptz
   launched_at timestamptz [note: 'set by scheduler at start of launch_date']
   taken_down_at timestamptz
@@ -746,8 +794,8 @@ Table products [headercolor: #F97316] {
 }
 
 Table product_topics [headercolor: #F97316] {
-  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
-  topic_id char(26) [not null, ref: > topics.id]
+  product_id char(26) [not null, note: 'on delete cascade']
+  topic_id char(26) [not null]
 
   indexes {
     (product_id, topic_id) [pk]
@@ -759,8 +807,8 @@ Table product_topics [headercolor: #F97316] {
 
 Table product_links [headercolor: #F97316] {
   id char(26) [pk, note: 'ULID']
-  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
-  kind link_kind [not null, note: 'any kind except website']
+  product_id char(26) [not null, note: 'on delete cascade']
+  kind varchar(255) [not null, note: 'Values: link_kind (varchar + CHECK). any kind except website']
   url varchar(2048) [not null, note: 'https only']
   position smallint [not null]
   created_at timestamptz
@@ -768,7 +816,6 @@ Table product_links [headercolor: #F97316] {
 
   indexes {
     (product_id, position) [unique]
-    kind
   }
 
   Note: 'Optional extra links (max 5). website_url on products stays the required main link. Editable after launch.'
@@ -776,7 +823,7 @@ Table product_links [headercolor: #F97316] {
 
 Table product_screenshots [headercolor: #F97316] {
   id char(26) [pk, note: 'ULID']
-  product_id char(26) [not null, ref: > products.id, note: 'on delete cascade']
+  product_id char(26) [not null, note: 'on delete cascade']
   path varchar(255) [not null]
   position smallint [not null]
   width integer
@@ -793,31 +840,17 @@ Table product_reviews [headercolor: #F97316] {
   id char(26) [pk, note: 'ULID']
   product_id char(26) [not null, ref: > products.id]
   reviewer_id char(26) [not null, ref: > users.id]
-  decision review_decision [not null]
+  decision varchar(255) [not null, note: 'Values: review_decision (varchar + CHECK).']
   note text [note: 'required for rejected / changes_requested; shown to the founder']
-  created_at timestamptz [not null]
+  created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (product_id, created_at)
+    (product_id, created_at, id)
   }
 
   Note: 'Full history of review decisions (a product can bounce several times).'
 }
 
-Table featured_placements [headercolor: #F97316] {
-  id char(26) [pk, note: 'ULID']
-  product_id char(26) [not null, ref: > products.id]
-  starts_on date [not null]
-  ends_on date [not null]
-  created_by char(26) [not null, ref: > users.id]
-  created_at timestamptz
-
-  indexes {
-    (starts_on, ends_on)
-  }
-
-  Note: 'Staff-featured slots on the front page (paid slots later reuse this table).'
-}
 
 //////////////////////////////////////////////////////////////
 // 3. Voting + Ranking
@@ -827,7 +860,7 @@ Table votes [headercolor: #22C55E] {
   id char(26) [pk, note: 'ULID']
   user_id char(26) [not null, ref: > users.id]
   product_id char(26) [not null, ref: > products.id]
-  status vote_status [not null, default: 'counted']
+  status varchar(255) [not null, default: 'counted', note: 'Values: vote_status (varchar + CHECK).']
   voted_at timestamptz [not null, note: 'last time the vote was (re)cast']
   removed_at timestamptz [note: 'null = active; set when the member takes the vote back']
   toggle_count smallint [not null, default: 0, note: 'times un-voted / re-voted — anti-cheat signal']
@@ -836,7 +869,7 @@ Table votes [headercolor: #22C55E] {
   user_agent varchar(255)
   voided_at timestamptz
   voided_reason varchar(255)
-  created_at timestamptz [not null, note: 'first time this member voted on this product']
+  created_at timestamptz [not null, note: 'first time this member voted on this product', default: `now()`]
   updated_at timestamptz
 
   indexes {
@@ -939,14 +972,14 @@ Table comments [headercolor: #A855F7] {
   parent_id char(26) [ref: > comments.id, note: 'null = top level; otherwise MUST be a top-level comment of the same product (trigger). Never changes after insert']
   reply_to_user_id char(26) [ref: > users.id, note: 'who a reply answers (@-mention + notification); null for top level, and null when the answered author deleted their account']
   body text [not null, note: 'plain text. The API accepts 1 to 1000 characters; the CHECK allows up to 2000 as a backstop. Wiped to an empty string when the author deletes the comment']
-  edited_at timestamptz [note: 'set by the author edit (precision 6); an unchanged body does not bump it']
-  removed_at timestamptz [note: 'removed by staff (precision 6); the body is KEPT for the staff view and never serialised publicly']
+  edited_at timestamptz(6) [note: 'set by the author edit (precision 6); an unchanged body does not bump it']
+  removed_at timestamptz(6) [note: 'removed by staff (precision 6); the body is KEPT for the staff view and never serialised publicly']
   removed_by char(26) [ref: > users.id, note: 'staff member who removed it; set together with removed_at']
   removed_reason varchar(255) [note: 'the staff note cut to 255 characters; the full note stays in reports.resolution_note']
   replies_count integer [not null, default: 0, note: 'VISIBLE replies of a top-level comment (neither removed nor deleted); the Top sort needs it. Changed only by relative SET n = n + 1 under the product row lock. Stays on a deleted or removed top-level comment (its replies stay visible)']
-  created_at timestamptz [not null, default: `now()`, note: 'precision 6 (microseconds): it sits in keyset cursors and the tie order. The Comment model has $timestamps = false, the actions and the factory set created_at and updated_at themselves']
-  updated_at timestamptz [note: 'precision 6']
-  deleted_at timestamptz [note: 'deleted by the author (precision 6). The row stays, the body is wiped; shown as a placeholder only while it still has visible replies']
+  created_at timestamptz(6) [not null, default: `now()`, note: 'precision 6 (microseconds): it sits in keyset cursors and the tie order. The Comment model has $timestamps = false, the actions and the factory set created_at and updated_at themselves']
+  updated_at timestamptz(6) [note: 'precision 6']
+  deleted_at timestamptz(6) [note: 'deleted by the author (precision 6). The row stays, the body is wiped; shown as a placeholder only while it still has visible replies']
 
   indexes {
     (product_id, replies_count desc, created_at desc, id desc) [name: 'comments_product_top_index', note: 'PARTIAL: WHERE parent_id IS NULL. sort=top keyset']
@@ -981,7 +1014,7 @@ Table comments [headercolor: #A855F7] {
 Table user_follows [headercolor: #A855F7] {
   follower_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: DeleteAccount deletes the rows explicitly']
   followed_id char(26) [not null, ref: > users.id]
-  created_at timestamptz [not null, default: `now()`, note: 'precision 6: it sits in the keyset cursor of GET /me/follows/users']
+  created_at timestamptz(6) [not null, default: `now()`, note: 'precision 6: it sits in the keyset cursor of GET /me/follows/users']
 
   indexes {
     (follower_id, followed_id) [pk]
@@ -1005,7 +1038,7 @@ Table user_follows [headercolor: #A855F7] {
 Table topic_follows [headercolor: #A855F7] {
   user_id char(26) [not null, ref: > users.id, note: 'plain FK']
   topic_id char(26) [not null, ref: > topics.id, note: 'plain FK, no cascade: DeleteTopic deletes the rows of an unused topic itself']
-  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
+  created_at timestamptz(6) [not null, default: `now()`, note: 'precision 6']
 
   indexes {
     (user_id, topic_id) [pk]
@@ -1020,14 +1053,14 @@ Table reports [headercolor: #A855F7] {
   reporter_id char(26) [not null, ref: > users.id]
   reportable_type varchar(32) [not null, note: "polymorphic: 'product' | 'comment' (CHECK reports_type_check)"]
   reportable_id char(26) [not null, note: 'NO foreign key (polymorphic): CreateReport validates the target']
-  reason report_reason [not null, note: 'varchar + CHECK: spam, abuse, misleading, inappropriate, other']
+  reason varchar(255) [not null, note: 'Values: report_reason (varchar + CHECK). varchar + CHECK: spam, abuse, misleading, inappropriate, other']
   details varchar(1000) [note: 'required by the API when reason = other (validated, not a CHECK). Display text: staff-only, never in a member response']
-  status report_status [not null, default: 'open', note: 'varchar + CHECK: open, resolved, dismissed']
+  status varchar(255) [not null, default: 'open', note: 'Values: report_status (varchar + CHECK). varchar + CHECK: open, resolved, dismissed']
   handled_by char(26) [ref: > users.id, note: 'null on a closed report = closed by the system (the target was deleted by its author or member); such reports count as resolved but not toward reporter reliability']
-  handled_at timestamptz [note: 'precision 6 (keyset order of the history list). Set exactly when status <> open']
+  handled_at timestamptz(6) [note: 'precision 6 (keyset order of the history list). Set exactly when status <> open']
   resolution_note varchar(500) [note: "staff note, or 'deleted_by_author' for a system close"]
-  created_at timestamptz [not null, default: `now()`, note: 'precision 6']
-  updated_at timestamptz [note: 'precision 6']
+  created_at timestamptz(6) [not null, default: `now()`, note: 'precision 6']
+  updated_at timestamptz(6) [note: 'precision 6']
 
   indexes {
     (reporter_id, reportable_type, reportable_id) [unique, name: 'reports_open_unique', note: "PARTIAL: WHERE status = 'open'. One OPEN report per reporter per target (replaces the earlier full unique): a closed report never blocks a later one, the action refuses a re-report after a DISMISSED one (409 already_reviewed)"]
@@ -1068,14 +1101,14 @@ Table reports [headercolor: #A855F7] {
 //////////////////////////////////////////////////////////////
 
 Table notifications [headercolor: #EC4899] {
-  id uuid [pk, note: 'UUIDv7 written by RecordNotification (time-ordered)']
-  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE (a real FK replaces the polymorphic notifiable columns). Accounts are anonymised, never deleted: DeleteAccount removes the rows itself, the cascade covers a hard delete']
+  id uuid [pk, note: 'Values: uuid (varchar + CHECK). UUIDv7 written by RecordNotification (time-ordered)']
+  user_id char(26) [not null, note: 'FK ON DELETE CASCADE (a real FK replaces the polymorphic notifiable columns). Accounts are anonymised, never deleted: DeleteAccount removes the rows itself, the cascade covers a hard delete']
   type varchar(40) [not null, note: 'CHECK notifications_type_valid: review_approved, review_rejected, review_changes_requested, launch_reminder, product_live, new_comment, export_ready. Digests are email only and have no bell type']
   data jsonb [not null, note: "CHECK notifications_data_object (jsonb_typeof(data) = 'object'). Shape enforced by RecordNotification before any query: only the keys message_key (notifications.<type>), product_id, review_id, comment_id (string ids), params (an object of scalars, e.g. product_name, kind) and href (app-relative path starting with one slash). Never prose, a note, a comment body or an absolute URL. The client renders message_key and params as text"]
   dedupe_key varchar(191) [not null, note: "idempotency: review:{review_id}, product_live:{product_id}:{launch_date}, comment:{comment_id}, launch_reminder:{product_id}:{launch_date}. The queued listener, a queue retry and the reconcile sweep derive the same key"]
-  read_at timestamptz [note: 'precision 6. CHECK notifications_read_after_created (read_at IS NULL OR read_at >= created_at); MarkNotificationsRead stamps GREATEST(now, created_at) so a faster clock cannot break it']
-  created_at timestamptz [not null, note: 'precision 6, in the keyset cursor. The Notification model has $timestamps = false; RecordNotification sets both stamps itself']
-  updated_at timestamptz [not null, note: 'precision 6']
+  read_at timestamptz(6) [note: 'precision 6. CHECK notifications_read_after_created (read_at IS NULL OR read_at >= created_at); MarkNotificationsRead stamps GREATEST(now, created_at) so a faster clock cannot break it']
+  created_at timestamptz(6) [not null, note: 'precision 6, in the keyset cursor. The Notification model has $timestamps = false; RecordNotification sets both stamps itself']
+  updated_at timestamptz(6) [not null, note: 'precision 6']
 
   indexes {
     (user_id, dedupe_key) [unique, name: 'notifications_user_dedupe_unique', note: 'one bell row per member per event; INSERT ... ON CONFLICT DO NOTHING']
@@ -1095,10 +1128,10 @@ Table notifications [headercolor: #EC4899] {
 }
 
 Table email_preferences [headercolor: #EC4899] {
-  user_id char(26) [not null, ref: > users.id, note: 'FK ON DELETE CASCADE; DeleteAccount deletes the rows too']
+  user_id char(26) [not null, note: 'FK ON DELETE CASCADE; DeleteAccount deletes the rows too']
   type varchar(32) [not null, note: 'CHECK email_preferences_type_optional: only review_outcome, launch_reminder, product_live, new_comment, daily_top5, weekly_best, export_ready (EmailType::preferenceTypes()). verify_email / reset_password / email_change can never be stored, so never switched off']
   enabled boolean [not null]
-  updated_at timestamptz [not null, note: 'precision 6']
+  updated_at timestamptz(6) [not null, note: 'precision 6']
 
   indexes {
     (user_id, type) [pk]
@@ -1116,18 +1149,18 @@ Table email_preferences [headercolor: #EC4899] {
 Table email_messages [headercolor: #EC4899] {
   id char(26) [pk, note: 'ULID, lower-cased. Also the Message-ID header of the mail: <id@mail-domain>']
   user_id char(26) [not null, ref: > users.id, note: 'plain FK, no cascade: accounts are anonymised, never hard-deleted; DeleteAccount scrubs the rows']
-  type email_type [not null, note: 'varchar(32) + CHECK email_messages_type_valid (all EmailType values). Outbox mail is the six optional types; the three auth mails use the queue, not this table']
+  type varchar(32) [not null, note: 'Values: email_type (varchar + CHECK). varchar(32) + CHECK email_messages_type_valid (all EmailType values). Outbox mail is the six optional types; the three auth mails use the queue, not this table']
   idempotency_key varchar(191) [not null, unique, note: "e.g. review_outcome:{review_id}:{maker_id}, product_live:{product_id}:{launch_date}:{maker_id}, new_comment:{kind}:{product_id}:{yyyymmddHH}:{user_id} (the hour is the comment's created_at in UTC, never now()). INSERT ... ON CONFLICT DO NOTHING; unique index email_messages_idempotency_key_unique"]
   to_email varchar(255) [not null, note: 'PERSONAL DATA: refreshed to the member current address at send time; purged with the row (retention.email_messages_days) and replaced by the anonymised address (deleted+<id>@invalid) on account deletion']
   payload jsonb [not null, note: "CHECK email_messages_payload_object. Ids and small scalars only (strings up to 191 characters, ints, bools, null, or a list of id strings for digests), checked by RecordNotification: never an address, a body or a note. The mail re-reads names at send time"]
-  status email_status [not null, default: 'queued', note: 'varchar(16) + CHECK email_messages_status_valid']
+  status varchar(16) [not null, default: 'queued', note: 'Values: email_status (varchar + CHECK). varchar(16) + CHECK email_messages_status_valid']
   attempts smallint [not null, default: 0, note: 'CHECK >= 0. Every claim increments it; a claim is identified by (id, attempts). suppress() and release() take the claim increment off again']
-  next_attempt_at timestamptz [note: "precision 6. The due time of a queued row and the lease end of a sending one; NULL once terminal. CHECK email_messages_due_state: (status IN ('queued','sending')) = (next_attempt_at IS NOT NULL)"]
+  next_attempt_at timestamptz(6) [note: "precision 6. The due time of a queued row and the lease end of a sending one; NULL once terminal. CHECK email_messages_due_state: (status IN ('queued','sending')) = (next_attempt_at IS NOT NULL)"]
   last_error varchar(500) [note: 'class name + redacted, bounded message (addresses replaced by [email]), or a reason code: opted_out, user_deleted, user_suspended, email_unverified, user_missing, target_gone, lease_expired']
   provider_message_id varchar(255) [note: "the Message-ID WE set (<id@domain>) as returned by the mailer, NOT a provider receipt"]
-  sent_at timestamptz [note: "precision 6. CHECK email_messages_sent_at_state: (status = 'sent') = (sent_at IS NOT NULL)"]
-  created_at timestamptz [not null, note: 'precision 6']
-  updated_at timestamptz [not null, note: 'precision 6']
+  sent_at timestamptz(6) [note: "precision 6. CHECK email_messages_sent_at_state: (status = 'sent') = (sent_at IS NOT NULL)"]
+  created_at timestamptz(6) [not null, note: 'precision 6']
+  updated_at timestamptz(6) [not null, note: 'precision 6']
 
   indexes {
     (next_attempt_at, id) [name: 'email_messages_due_index', note: "PARTIAL: WHERE status IN ('queued','sending'). The claim orders by (next_attempt_at, id) across both waiting states, so those are the key columns (a leading status would force a Sort of the whole due backlog); the predicate already restricts to the two waiting states. The WHERE of the claim repeats the predicate text"]
@@ -1166,8 +1199,8 @@ Table digest_runs [headercolor: #EC4899] {
   product_ids jsonb [not null, note: "CHECK digest_runs_product_ids_valid: a JSON array of at most 5 product ids, chosen ONCE so every member gets the same list and a resumed run keeps it"]
   last_user_id char(26) [note: 'resume cursor: the last user id fully processed; the next chunk continues after it']
   enqueued integer [not null, default: 0, note: 'CHECK enqueued >= 0. Outbox rows inserted so far']
-  started_at timestamptz [not null, note: 'precision 6. A run younger than 18 h is resumed by the next tick (even past midnight), an older one is abandoned']
-  completed_at timestamptz [note: 'precision 6. NULL while the run is open. Also set when a run is ABANDONED (too old to resume), so completed_at set with enqueued below the eligible-member count means abandoned']
+  started_at timestamptz(6) [not null, note: 'precision 6. A run younger than 18 h is resumed by the next tick (even past midnight), an older one is abandoned']
+  completed_at timestamptz(6) [note: 'precision 6. NULL while the run is open. Also set when a run is ABANDONED (too old to resume), so completed_at set with enqueued below the eligible-member count means abandoned']
 
   indexes {
     (kind, period_date) [pk]
@@ -1218,10 +1251,10 @@ Table exports [headercolor: #14B8A6] {
   file_size integer [note: 'bytes of the zip. CHECK exports_file_size_range: 0 to 5242880 (5 MB)']
   row_counts jsonb [note: 'when ready: {summary, hourly, referrers_daily, rank_timeline} row counts of the four CSV files']
   error varchar(32) [note: "short code only: generation_failed, too_large, stalled; never exception text. CHECK exports_error_only_when_failed (error IS NULL OR status = 'failed')"]
-  completed_at timestamptz [note: 'precision 6']
-  expires_at timestamptz [note: 'precision 6. Set when the export becomes ready to completed_at + retention.exports_days (default 7); a later change of the setting does not move it. A ready export also expires at once when a newer one replaces it']
-  created_at timestamptz [not null, note: 'precision 6']
-  updated_at timestamptz [not null, note: 'precision 6']
+  completed_at timestamptz(6) [note: 'precision 6']
+  expires_at timestamptz(6) [note: 'precision 6. Set when the export becomes ready to completed_at + retention.exports_days (default 7); a later change of the setting does not move it. A ready export also expires at once when a newer one replaces it']
+  created_at timestamptz(6) [not null, note: 'precision 6']
+  updated_at timestamptz(6) [not null, note: 'precision 6']
 
   indexes {
     (user_id, created_at) [name: 'exports_user_id_created_at_index']
@@ -1251,7 +1284,7 @@ Table exports [headercolor: #14B8A6] {
 Table auth_events [headercolor: #EF4444] {
   id char(26) [pk, note: 'ULID']
   user_id char(26) [ref: > users.id, note: 'null for failed logins on unknown emails']
-  event auth_event_type [not null]
+  event varchar(255) [not null, note: 'Values: auth_event_type (varchar + CHECK).']
   ip_hash varchar(64)
   device_hash varchar(64)
   user_agent varchar(255)
@@ -1261,6 +1294,7 @@ Table auth_events [headercolor: #EF4444] {
     (user_id, created_at)
     ip_hash
     device_hash
+    created_at [name: 'auth_events_created_at_index']
   }
 
   Note: 'Deleted by launchpad:purge-retention after settings.retention.auth_events_days (180); no trigger guards this table and no FK points at it. Security log + raw material for "one person, ten logins". Written from sub-project 1 onward.'
@@ -1301,6 +1335,16 @@ Table risk_signals [headercolor: #EF4444] {
   '''
 }
 
+// Foreign keys with explicit delete actions (all other references use PostgreSQL NO ACTION).
+Ref: email_preferences.user_id > users.id [delete: cascade]
+Ref: notifications.user_id > users.id [delete: cascade]
+Ref: product_links.product_id > products.id [delete: cascade]
+Ref: product_screenshots.product_id > products.id [delete: cascade]
+Ref: product_topics.product_id > products.id [delete: cascade]
+Ref: product_topics.topic_id > topics.id [delete: restrict]
+Ref: social_accounts.user_id > users.id [delete: cascade]
+Ref: user_links.user_id > users.id [delete: cascade]
+
 //////////////////////////////////////////////////////////////
 // Groups (dbdiagram draws a box around each)
 //////////////////////////////////////////////////////////////
@@ -1311,6 +1355,10 @@ TableGroup accounts_1 {
   settings
   social_accounts
   audit_logs
+  cache
+  cache_locks
+  job_batches
+  migrations
   sessions
   personal_access_tokens
   password_reset_tokens
@@ -1325,7 +1373,6 @@ TableGroup products_2 {
   product_links
   product_screenshots
   product_reviews
-  featured_placements
 }
 
 TableGroup voting_3 {
@@ -1346,6 +1393,7 @@ TableGroup notifications_5 {
   notifications
   email_preferences
   email_messages
+  digest_runs
 }
 
 TableGroup dashboard_7 {
